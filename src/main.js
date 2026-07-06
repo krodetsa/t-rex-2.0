@@ -77,7 +77,7 @@ function beginLevel(i) {
   state = "playing";
   hideAllScreens();
   hud.classList.remove("hidden");
-  // audio.startMusic();
+  audio.startMusic();
 }
 
 function startGame() {
