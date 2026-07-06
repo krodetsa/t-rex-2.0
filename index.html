@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>T-REX // NEON RUN</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div id="stage">
+    <canvas id="game"></canvas>
+
+    <!-- CRT / neon post overlays (pure CSS) -->
+    <div class="overlay scanlines"></div>
+    <div class="overlay vignette"></div>
+
+    <!-- HUD -->
+    <div id="hud" class="hidden">
+      <div class="hud-left">
+        <span class="chip bones"><span class="ico">🦴</span><span id="boneCount">0</span><span class="sep">/</span><span id="boneTotal">0</span></span>
+        <span class="chip lives"><span class="ico">❤</span><span id="lifeCount">3</span></span>
+      </div>
+      <div class="hud-right">
+        <button id="muteBtn" class="chip btn" title="Mute (M)">♪</button>
+      </div>
+    </div>
+
+    <!-- Title screen -->
+    <div id="title" class="screen">
+      <h1 class="logo">T&#8209;REX<span class="sub">// NEON RUN</span></h1>
+      <p class="tag">Kurwa do it</p>
+      <button id="startBtn" class="neonBtn">▶ START</button>
+      <ul class="controls">
+        <li><b>← →</b> / <b>A D</b> — move</li>
+        <li><b>Space</b> / <b>↑</b> / <b>W</b> — jump (hold = higher)</li>
+        <li><b>R</b> restart · <b>Esc</b> pause · <b>M</b> mute</li>
+      </ul>
+    </div>
+
+    <!-- Pause screen -->
+    <div id="pause" class="screen hidden">
+      <h2 class="logo small">PAUSED</h2>
+      <button id="resumeBtn" class="neonBtn">▶ RESUME</button>
+      <button id="restartBtn" class="neonBtn ghost">↺ RESTART LEVEL</button>
+    </div>
+
+    <!-- Game over screen -->
+    <div id="gameover" class="screen hidden">
+      <h2 class="logo dead">GAME OVER</h2>
+      <p class="tag">The T-Rex ran out of lives.</p>
+      <button id="retryBtn" class="neonBtn ghost">↺ START OVER</button>
+    </div>
+
+    <!-- Win screen -->
+    <div id="win" class="screen hidden">
+      <h2 class="logo">YOU WON!</h2>
+      <p class="tag">The T-Rex is alive and you are incredible ❤</p>
+      <p class="credit">Made by <a href="https://t.me/krodetsa" target="_blank" rel="noopener">Krodetsa</a></p>
+      <button id="againBtn" class="neonBtn">↺ PLAY AGAIN</button>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
