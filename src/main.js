@@ -85,7 +85,7 @@ function startGame() {
   audio.resume();
   session.index = 0;
   setLives(3);
-  beginLevel(3);
+  beginLevel(0);
 }
 
 function restartLevel() {
