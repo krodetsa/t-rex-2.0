@@ -11,6 +11,7 @@
 
 import { createRng } from "../core/rng.js";
 import { TAU } from "../core/math.js";
+import { quality } from "../core/quality.js";
 
 // Deterministic hash in [0,1) from an integer — keeps a motif's shape stable while it
 // scrolls (so nothing flickers as new instances enter the view).
@@ -99,8 +100,10 @@ export class Background {
     // 6. Fireflies (parallax 0.5)
     this._fireflies(renderer, cssW, cssH, camera.left * 0.5, time);
 
-    // 7. Foreground plants (big, blurred, semi-transparent for depth)
-    this._foreground(ctx, cssW, cssH, camera.left * 0.55, time);
+    // 7. Foreground plants (big, blurred, semi-transparent for depth). The hanging
+    //    vines are the priciest layer (many blurred passes), so drop them first when
+    //    quality is reduced.
+    this._foreground(ctx, cssW, cssH, camera.left * 0.55, time, quality.bgDetail >= 0.5);
   }
 
   _moon(ctx, x, y, r, time) {
@@ -251,7 +254,10 @@ export class Background {
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
     const span = w + 80;
-    for (const s of this.spores) {
+    // Fewer additive dots on reduced quality (these are fill-rate heavy).
+    const n = Math.max(8, (this.spores.length * quality.bgDetail) | 0);
+    for (let si = 0; si < n; si++) {
+      const s = this.spores[si];
       // Continuous wrap on x (parallax + gentle sway) so nothing snaps while scrolling.
       let x = ((s.x - off + Math.sin(time * s.spd + s.ph) * s.sway) % span + span) % span - 40;
       let y = (s.yf * h - time * s.vy) % h; // slow upward drift, wraps
@@ -267,7 +273,9 @@ export class Background {
     const ctx = r.ctx;
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
-    for (const f of this.fireflies) {
+    const n = Math.max(6, (this.fireflies.length * quality.bgDetail) | 0);
+    for (let fi = 0; fi < n; fi++) {
+      const f = this.fireflies[fi];
       let x = ((f.x - off + Math.sin(time * f.spd + f.ph) * f.drift) % (w + 80) + (w + 80)) % (w + 80) - 40;
       const y = f.y + Math.cos(time * f.spd * 0.8 + f.ph) * f.drift;
       const a = 0.35 + 0.45 * (0.5 + 0.5 * Math.sin(time * 3 * f.spd + f.ph));
@@ -279,7 +287,7 @@ export class Background {
 
   // Big, soft, semi-transparent plants + hanging vines framing the view. Batched by
   // color into a handful of shadowed passes.
-  _foreground(ctx, w, h, off, time) {
+  _foreground(ctx, w, h, off, time, drawVines = true) {
     // Nearest layer: a repeating band of big fronds, in two color variants.
     const fr = {
       mag: { fill: "rgba(20,6,26,0.82)", edge: "#ff3df0", fillP: new Path2D(), strokeP: new Path2D() },
@@ -309,6 +317,8 @@ export class Background {
       ctx.stroke(b.strokeP);
     }
     ctx.restore();
+
+    if (!drawVines) return;
 
     // Hanging vines from the top (same continuous-wrap parallax), batched by color.
     const vb = {

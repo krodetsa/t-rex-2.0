@@ -1019,21 +1019,35 @@ export class Music {
     osc.stop(t + 0.16);
   }
 
+  // A shared 1s white-noise buffer, generated once and reused for every drum hit.
+  // Drums fire on almost every 16th note, so allocating + filling a fresh buffer each
+  // time (the old behaviour) was steady main-thread garbage — this reuses one buffer.
+  _noiseBuffer() {
+    if (this._noiseBuf) return this._noiseBuf;
+    const sr = this.ctx.sampleRate;
+    const len = sr | 0; // 1 second
+    const buf = this.ctx.createBuffer(1, len, sr);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    this._noiseBuf = buf;
+    return buf;
+  }
+
   // Filtered noise burst at absolute time `t` — used for snare/hat/crash.
   _drumNoise(t, dur, gain, filterType, freq) {
     if (!this.ctx) return;
-    const n = Math.max(1, Math.floor(this.ctx.sampleRate * dur));
-    const buf = this.ctx.createBuffer(1, n, this.ctx.sampleRate);
-    const data = buf.getChannelData(0);
-    for (let i = 0; i < n; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / n);
+    const buf = this._noiseBuffer();
     const src = this.ctx.createBufferSource();
     src.buffer = buf;
     const flt = this.ctx.createBiquadFilter();
     flt.type = filterType;
     flt.frequency.value = freq;
     const g = this.ctx.createGain();
-    g.gain.value = gain;
+    // Percussive decay via a gain ramp (was baked per-sample into the buffer).
+    g.gain.setValueAtTime(gain, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     src.connect(flt).connect(g).connect(this._gain || this.destination);
-    src.start(t);
+    // Play a random slice so repeated hits don't sound machine-gun identical.
+    src.start(t, Math.random() * Math.max(0.001, buf.duration - dur), dur);
   }
 }

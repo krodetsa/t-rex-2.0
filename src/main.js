@@ -12,9 +12,15 @@ import { Particles } from "./render/particles.js";
 import { Game } from "./game/game.js";
 import { LEVELS } from "./game/levels.js";
 import { isConfigured, fetchTop, submitScore, formatTime } from "./core/leaderboard.js";
+import { quality, initQuality, sampleFrame, setTier, setAuto } from "./core/quality.js";
+
+// Pick a starting quality tier from device hints before the renderer reads quality.dpr.
+initQuality();
 
 const canvas = document.getElementById("game");
 const renderer = new Renderer(canvas);
+// When the adaptive manager changes tier, push the new dpr/glow into the renderer.
+quality.onChange = () => renderer.applyQuality();
 const camera = new Camera();
 const background = new Background();
 const particles = new Particles();
@@ -298,12 +304,13 @@ const loop = createLoop({
     if (game) {
       game.draw(renderer, alpha);
     } else {
-      // Title / win backdrop: slow auto-panning parallax.
-      renderer.clear();
+      // Title / win backdrop: slow auto-panning parallax. The sky gradient repaints
+      // every pixel, so no separate clear() is needed.
       camera.snapTo(400 + Math.sin(time * 0.15) * 300, 240);
       background.draw(renderer, camera, time);
     }
   },
+  onFrame: sampleFrame,
 });
 
 showScreen("title");
@@ -317,4 +324,7 @@ window.__dbg = {
   session,
   input,
   audio,
+  quality,
+  setTier,   // force a quality tier: __dbg.setTier('low'|'med'|'high')
+  setAuto,   // re-enable adaptive quality: __dbg.setAuto(true)
 };

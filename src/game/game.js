@@ -299,7 +299,7 @@ export class Game {
 
   // ---------------------------------------------------------------- rendering
   draw(r, alpha) {
-    r.clear();
+    // No clear(): the background's sky gradient repaints every pixel opaquely first.
     this.background.draw(r, this.camera, this.time);
 
     r.beginWorld(this.camera);

@@ -7,11 +7,15 @@
 
 export const STEP = 1 / 60; // seconds per fixed simulation step
 
-export function createLoop({ update, render }) {
+// `onFrame(deltaMs, workMs)` (optional) is called once per rendered frame with the
+// wall-clock frame delta and the JS time spent in update()+render() — used by the
+// adaptive quality manager.
+export function createLoop({ update, render, onFrame }) {
   let running = false;
   let last = 0;
   let acc = 0;
   let rafId = 0;
+  let prevRaf = 0;
 
   function frame(now) {
     if (!running) return;
@@ -21,6 +25,7 @@ export function createLoop({ update, render }) {
     if (dt > 0.25) dt = 0.25;
     acc += dt;
 
+    const workStart = performance.now();
     let steps = 0;
     while (acc >= STEP) {
       update(STEP);
@@ -30,6 +35,13 @@ export function createLoop({ update, render }) {
     }
 
     render(acc / STEP);
+
+    if (onFrame) {
+      const workMs = performance.now() - workStart;
+      const deltaMs = prevRaf ? now - prevRaf : 1000 / 60;
+      onFrame(deltaMs, workMs);
+    }
+    prevRaf = now;
     rafId = requestAnimationFrame(frame);
   }
 

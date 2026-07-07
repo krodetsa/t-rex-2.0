@@ -3,6 +3,11 @@
 // bone-collect bursts, and the death shatter.
 
 import { rand, TAU } from "../core/math.js";
+import { quality } from "../core/quality.js";
+
+// Scale an emitter's particle count by the adaptive quality setting (keep at least a
+// couple so bursts never vanish entirely).
+const q = (n) => Math.max(2, Math.round(n * quality.particles));
 
 export class Particles {
   constructor(max = 400) {
@@ -67,7 +72,7 @@ export class Particles {
   // --- Emitters --------------------------------------------------------------
 
   jump(x, y) {
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0, n = q(8); i < n; i++) {
       const p = this._spawn(); if (!p) break;
       const a = rand(Math.PI * 0.15, Math.PI * 0.85);
       const sp = rand(40, 120);
@@ -77,7 +82,7 @@ export class Particles {
   }
 
   land(x, y, power) {
-    const n = 6 + Math.floor(power * 12);
+    const n = q(6 + Math.floor(power * 12));
     for (let i = 0; i < n; i++) {
       const p = this._spawn(); if (!p) break;
       const dir = i % 2 ? 1 : -1;
@@ -93,7 +98,7 @@ export class Particles {
   }
 
   boneBurst(x, y) {
-    for (let i = 0; i < 16; i++) {
+    for (let i = 0, n = q(16); i < n; i++) {
       const p = this._spawn(); if (!p) break;
       const a = rand(0, TAU);
       const sp = rand(60, 200);
@@ -103,7 +108,7 @@ export class Particles {
   }
 
   death(x, y) {
-    for (let i = 0; i < 26; i++) {
+    for (let i = 0, n = q(26); i < n; i++) {
       const p = this._spawn(); if (!p) break;
       const a = rand(0, TAU);
       const sp = rand(60, 300);

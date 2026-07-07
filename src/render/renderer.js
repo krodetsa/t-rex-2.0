@@ -5,6 +5,7 @@
 // glow (shadowBlur), with hot elements drawn additively for a cheap bloom.
 
 import { TILE } from "../game/level.js";
+import { quality } from "../core/quality.js";
 
 const VIEW_TILES_Y = 15; // how many tiles are visible vertically (constant framing)
 
@@ -18,8 +19,38 @@ export class Renderer {
     this.zoom = 1;
     this.vw = 0; // viewport size in world px
     this.vh = 0;
+    this.glowScale = quality.glow; // multiplies every shadowBlur (adaptive quality)
     this._glowCache = new Map(); // color -> pre-blurred glow sprite (canvas)
+    this._installGlowScale();
     this.resize();
+  }
+
+  // Centralize glow-cost control: wrap the context's `shadowBlur` setter so every
+  // assignment (in background, tiles, trex, entities, ...) is scaled by glowScale
+  // without touching a single call site. Dropping glowScale on weak hardware shrinks
+  // the blur radius everywhere at once — the single biggest render-cost lever. Guarded
+  // so an unusual engine (no accessor) just falls back to unscaled glow.
+  _installGlowScale() {
+    try {
+      const proto = Object.getPrototypeOf(this.ctx);
+      const desc = Object.getOwnPropertyDescriptor(proto, "shadowBlur");
+      if (!desc || !desc.set || !desc.get) return;
+      const self = this;
+      Object.defineProperty(this.ctx, "shadowBlur", {
+        configurable: true,
+        get() { return desc.get.call(this); },
+        set(v) { desc.set.call(this, v * self.glowScale); },
+      });
+    } catch (e) { /* leave glow unscaled */ }
+  }
+
+  // Re-read the adaptive quality knobs (called when the tier changes). Only reallocates
+  // the canvas backing store when the device-pixel cap actually moves — a rare event
+  // thanks to the quality manager's hysteresis.
+  applyQuality() {
+    this.glowScale = quality.glow;
+    const target = Math.min(window.devicePixelRatio || 1, quality.dpr);
+    if (Math.abs(target - this.dpr) > 0.01) this.resize();
   }
 
   // Return (and cache) a soft radial "glow dot" sprite for a color. Baking the blur
@@ -58,7 +89,7 @@ export class Renderer {
     const parent = this.canvas.parentElement;
     const cssW = parent.clientWidth || window.innerWidth;
     const cssH = parent.clientHeight || window.innerHeight;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min(window.devicePixelRatio || 1, quality.dpr);
     this.dpr = dpr;
     this.cssW = cssW;
     this.cssH = cssH;
