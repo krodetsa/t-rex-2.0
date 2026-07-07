@@ -50,6 +50,12 @@ let game = null;
 let state = "title"; // title | playing | paused | win
 let time = 0;
 
+// When a game-over/win screen appears, briefly ignore the jump-to-restart shortcut so a
+// jump the player was already mashing (e.g. trying to escape the fatal hit) can't skip the
+// screen and silently restart the whole run from level 1. Explicit button clicks are exempt.
+const SCREEN_INPUT_LOCK = 0.7; // s
+let screenLockUntil = 0;
+
 camera.setViewport(renderer.vw, renderer.vh);
 
 // --- Screen helpers ----------------------------------------------------------
@@ -127,6 +133,7 @@ function togglePause() {
 
 function winGame() {
   state = "win";
+  screenLockUntil = time + SCREEN_INPUT_LOCK;
   game = null;
   hud.classList.add("hidden");
   audio.stopMusic();
@@ -223,6 +230,7 @@ async function saveScore() {
 
 function gameOver() {
   state = "gameover";
+  screenLockUntil = time + SCREEN_INPUT_LOCK;
   game = null;
   hud.classList.add("hidden");
   showScreen("gameover");
@@ -243,7 +251,7 @@ const input = createInput((action) => {
     return;
   }
   if (state === "title" || state === "gameover" || state === "win") {
-    if (action === "jump") startGame();
+    if (action === "jump" && time >= screenLockUntil) startGame();
     return;
   }
   if (action === "pause") togglePause();
