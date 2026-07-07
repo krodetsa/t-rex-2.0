@@ -16,6 +16,7 @@ export const T = {
 //   '#' solid wall/ground     '=' one-way platform      '~' lava
 //   '@' player spawn          'o' bone (collectible)    'G' goal portal
 //   'h' horizontal fireball   'v' vertical fireball      space / '.' empty
+//   'E' enemy dino (patrols)  'S' enemy dino (shoots fireballs at the T-Rex)
 const TILE_CHARS = {
   "#": T.SOLID,
   "=": T.ONEWAY,
@@ -27,6 +28,8 @@ const ENTITY_CHARS = {
   G: "goal",
   h: "fireballH",
   v: "fireballV",
+  E: "enemyWalk",
+  S: "enemyShoot",
 };
 
 export class Level {

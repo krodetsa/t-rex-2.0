@@ -7,6 +7,7 @@ const MAP = {
   ArrowLeft: "left", KeyA: "left",
   ArrowRight: "right", KeyD: "right",
   ArrowUp: "jump", KeyW: "jump", Space: "jump",
+  Enter: "shoot",
   Escape: "pause",
   KeyR: "restart",
   KeyM: "mute",

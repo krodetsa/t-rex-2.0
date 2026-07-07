@@ -4,13 +4,14 @@
 
 import { Level, TILE, T } from "./level.js";
 import { Player } from "./player.js";
-import { Bone, Fireball, Goal } from "./entities.js";
+import { Bone, Fireball, Goal, Enemy, Projectile, SHOOT_INTERVAL, SHOOT_RANGE } from "./entities.js";
 import { overlapsTile } from "./physics.js";
 import { drawTrex } from "../render/trex.js";
 import { aabb, clamp } from "../core/math.js";
 
 const RESPAWN_DELAY = 1.0; // s of death animation before respawn
 const WIN_DELAY = 0.7;
+const SHOOT_COOLDOWN = 0.3; // s between the T-Rex's fireballs
 
 export class Game {
   constructor(plan, deps, hooks) {
@@ -29,16 +30,23 @@ export class Game {
     this.player = new Player(this.level.spawn, fx);
 
     this._boneSpecs = [];
+    this._enemySpecs = [];
     this.fireballs = [];
+    this.enemies = [];
+    this.projectiles = [];
+    this.shootCd = 0;
     this.goal = null;
     for (const s of this.level.spawns) {
       if (s.type === "bone") this._boneSpecs.push(s);
       else if (s.type === "fireballH") this.fireballs.push(new Fireball(s, "h"));
       else if (s.type === "fireballV") this.fireballs.push(new Fireball(s, "v"));
+      else if (s.type === "enemyWalk") this._enemySpecs.push({ spec: s, kind: "walker" });
+      else if (s.type === "enemyShoot") this._enemySpecs.push({ spec: s, kind: "shooter" });
       else if (s.type === "goal") this.goal = new Goal(s);
     }
     this.bonesTotal = this._boneSpecs.length;
     this._spawnBones();
+    this._spawnEnemies();
 
     // Cache the lava tile columns per row for cheap ember spawning.
     this._lavaSurface = this._findLavaSurface();
@@ -60,6 +68,14 @@ export class Game {
     this.bonesLeft = this.bonesTotal;
     if (this.goal) this.goal.active = false;
     this._reportHud();
+  }
+
+  // (Re)create all enemies and clear any in-flight fireballs. Like bones, killed
+  // enemies come back on respawn so a death restores the level to its start state.
+  _spawnEnemies() {
+    this.enemies = this._enemySpecs.map(({ spec, kind }) => new Enemy(spec, kind));
+    this.projectiles = [];
+    this.shootCd = 0;
   }
 
   _findLavaSurface() {
@@ -92,8 +108,11 @@ export class Game {
 
     for (const b of this.bones) b.update(dt, this.level, this.time);
     for (const f of this.fireballs) f.update(dt, this.level);
+    for (const e of this.enemies) e.update(dt, this.level);
+    for (const pr of this.projectiles) pr.update(dt, this.level);
     if (this.goal) this.goal.update(dt);
     this.particles.update(dt);
+    this.shootCd = Math.max(0, this.shootCd - dt);
 
     if (this.state === "won") {
       this.timer -= dt;
@@ -129,6 +148,56 @@ export class Game {
     for (const f of this.fireballs) {
       if (aabb(pb.x, pb.y, pb.w, pb.h, f.body.x, f.body.y, f.w, f.h)) { this._die(); return; }
     }
+
+    // --- Combat: T-Rex fires on Enter; shooters fire back at the T-Rex --------
+    if (input.justPressed("shoot") && this.shootCd <= 0) {
+      const dir = this.player.facing;
+      const mx = this.player.cx + dir * 16;
+      const my = this.player.body.y + 8; // roughly at the snout
+      this.projectiles.push(new Projectile(mx, my, dir, "player"));
+      this.shootCd = SHOOT_COOLDOWN;
+      this.particles.jump(mx, my); // little muzzle spark
+      this.audio.shoot();
+    }
+    for (const e of this.enemies) {
+      if (e.kind !== "shooter") continue;
+      e.shootTimer -= dt;
+      const dx = this.player.cx - e.cx;
+      if (e.shootTimer <= 0 && Math.abs(dx) < SHOOT_RANGE) {
+        e.shootTimer = SHOOT_INTERVAL;
+        const dir = dx >= 0 ? 1 : -1;
+        e.dir = dir; // turn to face the T-Rex as it fires
+        this.projectiles.push(new Projectile(e.cx + dir * 12, e.cy - 4, dir, "enemy"));
+        this.audio.enemyShoot();
+      }
+    }
+
+    // Projectiles: the T-Rex's kill enemies; enemies' kill the T-Rex.
+    for (const pr of this.projectiles) {
+      if (pr.dead) continue;
+      if (pr.owner === "player") {
+        for (const e of this.enemies) {
+          if (e.alive && aabb(pr.x, pr.y, pr.w, pr.h, e.body.x, e.body.y, e.w, e.h)) {
+            e.alive = false;
+            pr.dead = true;
+            this.particles.death(e.cx, e.cy);
+            this.audio.enemyHit();
+            break;
+          }
+        }
+      } else if (aabb(pr.x, pr.y, pr.w, pr.h, pb.x, pb.y, pb.w, pb.h)) {
+        this._die();
+        return;
+      }
+    }
+    this.projectiles = this.projectiles.filter((p) => !p.dead);
+    this.enemies = this.enemies.filter((e) => e.alive);
+
+    // Bumping into an enemy is lethal too.
+    for (const e of this.enemies) {
+      if (aabb(pb.x, pb.y, pb.w, pb.h, e.body.x, e.body.y, e.w, e.h)) { this._die(); return; }
+    }
+
     if (overlapsTile(pb, this.level, T.LAVA)) { this._die(); return; }
     if (pb.y > this.level.height + 80) { this._die(); return; } // fell off the map
 
@@ -151,7 +220,8 @@ export class Game {
 
   _respawn() {
     this.player.reset();
-    this._spawnBones(); // collected bones come back on death
+    this._spawnBones();   // collected bones come back on death
+    this._spawnEnemies(); // killed enemies and stray fireballs reset too
     this.camera.snapTo(this.player.cx, this.player.cy);
     this.camera._clamp(this.level);
     this.state = "play";
@@ -175,7 +245,9 @@ export class Game {
     for (const b of this.bones) b.draw(r, alpha, this.time);
     if (this.goal) this.goal.draw(r, alpha, this.time);
     for (const f of this.fireballs) f.draw(r, alpha, this.time);
+    for (const e of this.enemies) e.draw(r, alpha, this.time);
     if (!this.player.dead) drawTrex(r, this.player, alpha, this.time);
+    for (const pr of this.projectiles) pr.draw(r, alpha, this.time);
     this.particles.draw(r);
   }
 

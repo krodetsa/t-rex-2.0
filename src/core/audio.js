@@ -82,6 +82,9 @@ export class Audio {
   step() { this._tone("sine", 140, 60, 0.06, 0.30); this._noise(0.035, 0.045, 650); }
   bone() { this._tone("square", 880, 880, 0.06, 0.2); setTimeout(() => this._tone("square", 1320, 1320, 0.09, 0.2), 60); }
   death() { this._tone("sawtooth", 400, 60, 0.9, 0.3); this._noise(0.5, 0.2, 900); }
+  shoot() { this._tone("square", 700, 1250, 0.12, 0.18); }
+  enemyShoot() { this._tone("sawtooth", 300, 150, 0.16, 0.15); }
+  enemyHit() { this._tone("square", 520, 90, 0.22, 0.22); this._noise(0.12, 0.14, 700); }
 
   win() {
     const notes = [523, 659, 784, 1046];

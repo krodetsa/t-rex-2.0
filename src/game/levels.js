@@ -2,6 +2,7 @@
 //   '#' solid   '=' one-way platform   '~' lava
 //   '@' player spawn   'o' bone   'G' goal portal
 //   'h' horizontal fireball   'v' vertical fireball
+//   'E' enemy dino (patrols)  'S' enemy dino (shoots fireballs)
 //
 // Design rules (derived from the tuned physics):
 //   - max jump ≈ 3.3 tiles high / ≈4 tiles across, so step-ups are ≤3 tiles above a
@@ -27,7 +28,7 @@ export const LEVELS = [
     "              o           o             ",
     "           ======      ======     o     ",
     "        o        o                      ",
-    " @  o                         o    G     ",
+    " @  o               E     S    o    G     ",
     "#######~~#############~~#################",
     "########################################",
   ],
