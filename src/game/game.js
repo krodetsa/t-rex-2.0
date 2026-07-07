@@ -24,7 +24,7 @@ export class Game {
     const fx = {
       jump: (x, y) => { this.particles.jump(x, y); this.audio.jump(); },
       land: (x, y, power) => { this.particles.land(x, y, power); if (power > 0.06) this.audio.land(); },
-      step: (x, y, dir) => this.particles.footstep(x, y, dir),
+      step: (x, y, dir) => { this.particles.footstep(x, y, dir); this.audio.step(); },
     };
     this.player = new Player(this.level.spawn, fx);
 

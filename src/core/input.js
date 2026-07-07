@@ -10,6 +10,7 @@ const MAP = {
   Escape: "pause",
   KeyR: "restart",
   KeyM: "mute",
+  KeyN: "musicMute",
 };
 
 export function createInput(onEdge) {

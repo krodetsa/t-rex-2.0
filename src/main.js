@@ -26,6 +26,7 @@ const boneCount = el("boneCount");
 const boneTotal = el("boneTotal");
 const lifeCount = el("lifeCount");
 const muteBtn = el("muteBtn");
+const musicBtn = el("musicBtn");
 
 const deps = { audio, particles, camera, background };
 const session = { index: 0, lives: 3 };
@@ -84,7 +85,7 @@ function startGame() {
   audio.resume();
   session.index = 0;
   setLives(3);
-  beginLevel(0);
+  beginLevel(3);
 }
 
 function restartLevel() {
@@ -127,6 +128,11 @@ const input = createInput((action) => {
     muteBtn.classList.toggle("muted", muted);
     return;
   }
+  if (action === "musicMute") {
+    const muted = audio.toggleMusicMute();
+    musicBtn.classList.toggle("muted", muted);
+    return;
+  }
   if (state === "title" || state === "gameover" || state === "win") {
     if (action === "jump") startGame();
     return;
@@ -145,6 +151,11 @@ muteBtn.addEventListener("click", () => {
   audio.resume();
   const muted = audio.toggleMute();
   muteBtn.classList.toggle("muted", muted);
+});
+musicBtn.addEventListener("click", () => {
+  audio.resume();
+  const muted = audio.toggleMusicMute();
+  musicBtn.classList.toggle("muted", muted);
 });
 
 window.addEventListener("resize", () => {
