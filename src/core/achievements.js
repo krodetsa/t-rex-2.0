@@ -25,7 +25,7 @@ export const ACHIEVEMENTS = {
     accent: "77,255,163",
   },
   skorostrel: {
-    title: "SKOROSTREL",
+    title: "SPEEDRUNNER",
     desc: "Beat the game in less than a minute.",
     icon: "⚡",
     accent: "255,209,64",
