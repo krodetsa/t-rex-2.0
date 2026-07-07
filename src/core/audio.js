@@ -107,6 +107,13 @@ export class Audio {
     notes.forEach((f, i) => setTimeout(() => this._tone("sawtooth", f, f, 0.9, 0.2), i * 110));
   }
 
+  // Bright three-note chime + shimmer tail for an unlocked achievement (Steam-ish).
+  achievement() {
+    const notes = [784, 1047, 1319]; // G5 · C6 · E6
+    notes.forEach((f, i) => setTimeout(() => this._tone("triangle", f, f, 0.5, 0.2), i * 95));
+    setTimeout(() => this._tone("sine", 1568, 1568, 0.7, 0.1), 300); // sparkle
+  }
+
   // --- Background music -------------------------------------------------------
   // Delegated to the Music sequencer in ./music.js. It shares this synth's audio
   // context and plays into the master bus, so the mute toggle silences it too.

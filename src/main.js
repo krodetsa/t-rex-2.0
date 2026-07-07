@@ -13,6 +13,7 @@ import { Game } from "./game/game.js";
 import { LEVELS } from "./game/levels.js";
 import { isConfigured, fetchTop, submitScore, formatTime } from "./core/leaderboard.js";
 import { quality, initQuality, sampleFrame, setTier, setAuto } from "./core/quality.js";
+import { initAchievements, unlock, resetAchievements } from "./core/achievements.js";
 
 // Pick a starting quality tier from device hints before the renderer reads quality.dpr.
 initQuality();
@@ -25,6 +26,7 @@ const camera = new Camera();
 const background = new Background();
 const particles = new Particles();
 const audio = new Audio();
+initAchievements({ audio });
 
 const el = (id) => document.getElementById(id);
 const screens = { title: el("title"), pause: el("pause"), win: el("win"), gameover: el("gameover") };
@@ -51,7 +53,7 @@ const deps = { audio, particles, camera, background };
 // runTime accumulates seconds spent actually playing (pauses excluded); kills/deaths are
 // the run totals. These are shown only in the leaderboard, not the in-game HUD. All reset
 // when a fresh run starts.
-const session = { index: 0, lives: 3, kills: 0, deaths: 0, runTime: 0 };
+const session = { index: 0, lives: 3, kills: 0, deaths: 0, runTime: 0, deathsL1: 0 };
 let game = null;
 let state = "title"; // title | playing | paused | win
 let time = 0;
@@ -93,13 +95,17 @@ const hooks = {
     }
   },
   onLives: (delta) => {
-    if (delta < 0) session.deaths++; // every death counts toward the run total
+    if (delta < 0) {
+      session.deaths++; // every death counts toward the run total
+      // Deaths suffered on the first level (index 0) within this run.
+      if (session.index === 0 && ++session.deathsL1 >= 3) unlock("yebat_ti_loh");
+    }
     const n = session.lives + delta;
     setLives(Math.max(0, n));
     if (n <= 0) gameOver(); // out of lives -> game over, restart from level 1
   },
   onBones: (cur, total) => setBones(cur, total),
-  onKill: () => { session.kills++; },
+  onKill: () => { session.kills++; unlock("first_blood"); },
 };
 
 function beginLevel(i) {
@@ -117,6 +123,7 @@ function startGame() {
   session.runTime = 0;
   session.kills = 0;
   session.deaths = 0;
+  session.deathsL1 = 0;
   setLives(3);
   beginLevel(0);
 }
@@ -162,6 +169,13 @@ function winGame() {
   showScreen("win");
   loadWinBoard();
   if (configured) setTimeout(() => nameInput.focus(), 60);
+
+  // End-of-run achievements. If several are earned at once they queue and show one after
+  // another (see achievements.js).
+  setTimeout(() => {
+    if (timeMs < 60000) unlock("skorostrel");        // sub-minute clear
+    if (session.kills === 0) unlock("act_of_humanism"); // pacifist run
+  }, 650);
 }
 
 // ---- Leaderboard rendering / loading / saving -------------------------------
@@ -327,4 +341,6 @@ window.__dbg = {
   quality,
   setTier,   // force a quality tier: __dbg.setTier('low'|'med'|'high')
   setAuto,   // re-enable adaptive quality: __dbg.setAuto(true)
+  unlock,             // fire an achievement toast: __dbg.unlock('first_blood')
+  resetAchievements,  // forget unlocks so they can pop again
 };
