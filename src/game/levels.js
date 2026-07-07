@@ -131,4 +131,26 @@ export const LEVELS = [
     "#####~~~~~~~~~~~~~~~~~",
     "#####~~~~~~~~~~~~~~~~~",
   ],
+
+  // --- Level 6: "The Apex" — BOSS ARENA. A walled box (no goal, no bones): defeat the
+  //     giant boss dino ('B') to win the game. Two vertical fireballs sweep the arena as
+  //     roaming hazards; one-way ledges give the player footing to line up shots and
+  //     dodge. Every side is solid so the boss and fireballs stay boxed in. ------------
+  [
+    "##################################",
+    "#                                #",
+    "#                                #",
+    "#        v              v        #",
+    "#                                #",
+    "#     ====              ====     #",
+    "#               B                #",
+    "#                                #",
+    "#                                #",
+    "#                                #",
+    "#         ====      ====         #",
+    "#                                #",
+    "# @                              #",
+    "##################################",
+    "##################################",
+  ],
 ];

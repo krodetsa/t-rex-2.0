@@ -33,6 +33,7 @@ const ENTITY_CHARS = {
   v: "fireballV",
   E: "enemyWalk",
   S: "enemyShoot",
+  B: "boss", // final-level boss dino — its presence turns the level into an arena
 };
 
 export class Level {

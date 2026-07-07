@@ -31,6 +31,7 @@ initAchievements({ audio });
 const el = (id) => document.getElementById(id);
 const screens = { title: el("title"), pause: el("pause"), win: el("win"), gameover: el("gameover") };
 const hud = el("hud");
+const boneChip = document.querySelector(".chip.bones");
 const boneCount = el("boneCount");
 const boneTotal = el("boneTotal");
 const lifeCount = el("lifeCount");
@@ -114,6 +115,8 @@ function beginLevel(i) {
   state = "playing";
   hideAllScreens();
   hud.classList.remove("hidden");
+  // The boss arena has no bones to collect, so hide that HUD chip there.
+  if (boneChip) boneChip.classList.toggle("hidden", game.isBoss);
   audio.startMusic();
 }
 

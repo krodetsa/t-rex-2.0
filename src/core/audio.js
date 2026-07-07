@@ -101,6 +101,8 @@ export class Audio {
   enemyHit() { this._tone("square", 520, 90, 0.22, 0.22); this._noise(0.12, 0.14, 700); }
   crack() { this._tone("square", 220, 180, 0.05, 0.14); this._noise(0.05, 0.08, 1600); }
   crumble() { this._tone("sawtooth", 160, 50, 0.35, 0.22); this._noise(0.3, 0.2, 500); }
+  hurt() { this._tone("square", 240, 120, 0.18, 0.24); this._noise(0.12, 0.14, 900); }
+  bossSlam() { this._tone("sawtooth", 110, 40, 0.4, 0.3); this._noise(0.35, 0.24, 400); }
 
   win() {
     const notes = [523, 659, 784, 1046];

@@ -11,6 +11,7 @@
   - Picks a conservative starting tier from `hardwareConcurrency` / `deviceMemory`.
   - The game loop now emits per-frame timing via a new `onFrame(deltaMs, workMs)` callback.
   - Debug helpers: `__dbg.setTier('low'|'med'|'high')`, `__dbg.setAuto(true)`.
+  - BOSSFIGHT
 
 ### Changed
 - Renderer wraps the canvas `shadowBlur` setter to centrally scale glow cost, and caps the backing-store DPR to the active quality tier.

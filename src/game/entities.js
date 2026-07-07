@@ -252,15 +252,18 @@ export class Enemy {
   draw(r, alpha, time) { drawEnemy(r, this, alpha, time); }
 }
 
-// --- Projectiles: fired fireballs (the T-Rex's and the enemies') -------------
-// A straight-flying fireball. `owner` decides who it hurts, its colour and speed.
-// It dies on lifetime, leaving the map, or striking a solid tile.
+// --- Projectiles: fired fireballs (the T-Rex's, the enemies' and the boss's) --
+// A flying fireball. `owner` decides who it hurts, its colour and speed. By default it
+// flies straight along `dir`; pass an explicit `vel` ({vx, vy}) for an aimed diagonal
+// shot (the boss aims at the T-Rex from mid-air). It dies on lifetime, leaving the map,
+// or striking a solid tile.
 export class Projectile {
-  constructor(x, y, dir, owner) {
+  constructor(x, y, dir, owner, vel = null) {
     this.w = 12; this.h = 12;
-    this.owner = owner; // 'player' | 'enemy'
-    this.dir = dir;
-    this.vx = dir * (owner === "player" ? 480 : 300);
+    this.owner = owner; // 'player' | 'enemy' | 'boss'
+    if (vel) { this.vx = vel.vx; this.vy = vel.vy || 0; }
+    else { this.vx = dir * (owner === "player" ? 480 : 300); this.vy = 0; }
+    this.dir = this.vx >= 0 ? 1 : -1;
     this.x = x - this.w / 2;
     this.y = y - this.h / 2;
     this.px = this.x; this.py = this.y;
@@ -277,7 +280,9 @@ export class Projectile {
     this.time += dt;
     this.life -= dt;
     this.x += this.vx * dt;
-    if (this.life <= 0 || this.x < -40 || this.x > level.width + 40) { this.dead = true; return; }
+    this.y += this.vy * dt;
+    if (this.life <= 0 || this.x < -40 || this.x > level.width + 40 ||
+        this.y < -40 || this.y > level.height + 40) { this.dead = true; return; }
     if (level.tileAt(Math.floor(this.cx / TILE), Math.floor(this.cy / TILE)) === T.SOLID) this.dead = true;
   }
 
@@ -294,8 +299,8 @@ export class Projectile {
     const cx = p.x + this.w / 2;
     const cy = p.y + this.h / 2;
     const flick = 1 + Math.sin(this.time * 24) * 0.15;
-    const outer = this.owner === "player" ? "#37f2ff" : FIRE_B;
-    const core = this.owner === "player" ? "#bff6ff" : FIRE_A;
+    const outer = this.owner === "player" ? "#37f2ff" : this.owner === "boss" ? "#c678ff" : FIRE_B;
+    const core = this.owner === "player" ? "#bff6ff" : this.owner === "boss" ? "#ffd0ff" : FIRE_A;
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
     // trailing streak behind the direction of travel
