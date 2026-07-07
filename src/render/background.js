@@ -43,30 +43,49 @@ export class Background {
     }));
   }
 
-  draw(renderer, camera, time) {
-    const { ctx, cssW, cssH } = renderer;
-    renderer.beginScreen();
-
-    // 1. Sky
+  // Sky + horizon-glow gradients depend only on the canvas size, so build them once and
+  // reuse until the viewport changes (creating gradients every frame is wasteful).
+  _staticGradients(ctx, cssW, cssH) {
+    if (this._grad && this._grad.w === cssW && this._grad.h === cssH) return this._grad;
     const sky = ctx.createLinearGradient(0, 0, 0, cssH);
     sky.addColorStop(0, "#03110d");
     sky.addColorStop(0.45, "#07132a");
     sky.addColorStop(1, "#0f0a22");
-    ctx.fillStyle = sky;
-    ctx.fillRect(0, 0, cssW, cssH);
-
-    // teal ground-glow near the horizon
     const hg = ctx.createRadialGradient(cssW * 0.5, cssH * 1.05, 0, cssW * 0.5, cssH * 1.05, cssH * 0.9);
     hg.addColorStop(0, "rgba(47,211,154,0.20)");
     hg.addColorStop(1, "rgba(47,211,154,0)");
-    ctx.fillStyle = hg;
+    const mist = [];
+    for (let i = 0; i < 3; i++) {
+      const y = cssH * (0.5 + i * 0.16);
+      const g = ctx.createLinearGradient(0, y - 30, 0, y + 30);
+      const a = 0.05 + i * 0.02;
+      g.addColorStop(0, "rgba(47,211,154,0)");
+      g.addColorStop(0.5, `rgba(80,220,200,${a})`);
+      g.addColorStop(1, "rgba(47,211,154,0)");
+      mist.push({ y, g });
+    }
+    this._grad = { w: cssW, h: cssH, sky, hg, mist };
+    return this._grad;
+  }
+
+  draw(renderer, camera, time) {
+    const { ctx, cssW, cssH } = renderer;
+    renderer.beginScreen();
+    const g = this._staticGradients(ctx, cssW, cssH);
+
+    // 1. Sky
+    ctx.fillStyle = g.sky;
+    ctx.fillRect(0, 0, cssW, cssH);
+
+    // teal ground-glow near the horizon
+    ctx.fillStyle = g.hg;
     ctx.fillRect(0, 0, cssW, cssH);
 
     // 2. Moon (parallax 0.05)
     this._moon(ctx, cssW * 0.74 - camera.left * 0.05, cssH * 0.24, cssH * 0.075, time);
 
     // 3. Mist bands
-    this._mist(ctx, cssW, cssH, camera.left, time);
+    this._mist(ctx, cssW, cssH, camera.left, time, g.mist);
 
     // 4. Distant canopy silhouette
     this._canopy(ctx, cssW, cssH, camera.left * 0.12, cssH * 0.66, "#071c19", "rgba(31,107,90,0.9)");
@@ -75,10 +94,10 @@ export class Background {
     this._plants(ctx, cssW, cssH, camera.left * 0.3, cssH * 0.88, 150, 1.0, "#08221e", "#2fd39a", time, 0);
 
     // 5b. Drifting spores in the air (parallax 0.35, behind the fireflies)
-    this._spores(ctx, cssW, cssH, camera.left * 0.35, time);
+    this._spores(renderer, cssW, cssH, camera.left * 0.35, time);
 
     // 6. Fireflies (parallax 0.5)
-    this._fireflies(ctx, cssW, cssH, camera.left * 0.5, time);
+    this._fireflies(renderer, cssW, cssH, camera.left * 0.5, time);
 
     // 7. Foreground plants (big, blurred, semi-transparent for depth)
     this._foreground(ctx, cssW, cssH, camera.left * 0.55, time);
@@ -109,17 +128,12 @@ export class Background {
     ctx.restore();
   }
 
-  _mist(ctx, w, h, camLeft, time) {
+  _mist(ctx, w, h, camLeft, time, mist) {
     ctx.save();
     for (let i = 0; i < 3; i++) {
-      const y = h * (0.5 + i * 0.16);
+      const { y, g } = mist[i];
       const off = (camLeft * 0.2 + time * (8 + i * 6)) % (w + 400);
-      const grad = ctx.createLinearGradient(0, y - 30, 0, y + 30);
-      const a = 0.05 + i * 0.02;
-      grad.addColorStop(0, "rgba(47,211,154,0)");
-      grad.addColorStop(0.5, `rgba(80,220,200,${a})`);
-      grad.addColorStop(1, "rgba(47,211,154,0)");
-      ctx.fillStyle = grad;
+      ctx.fillStyle = g;
       ctx.fillRect(-off, y - 30, w + 800, 60);
     }
     ctx.restore();
@@ -151,82 +165,89 @@ export class Background {
     ctx.restore();
   }
 
-  // A row of palms / ferns rising from baseY.
+  // A row of palms / ferns rising from baseY. Every blade in the layer is accumulated
+  // into shared Path2D batches (in absolute screen coords) and drawn with a single
+  // shadowed fill + stroke pass, so the whole layer costs ~3 glow ops instead of one
+  // per blade (the glow — shadowBlur — is the expensive part).
   _plants(ctx, w, h, off, baseY, spacing, scale, fill, edge, time, seed) {
-    ctx.save();
+    const fillP = new Path2D();
+    const bladeStroke = new Path2D();
+    const trunkStroke = new Path2D();
     const start = -((off % spacing) + spacing);
     for (let x = start; x <= w + spacing; x += spacing) {
       const k = Math.round((x + off) / spacing) + seed;
       const size = (48 + hash(k) * 46) * scale;
       const sway = Math.sin(time * 0.6 + k) * 0.08;
-      if (hash(k * 7) > 0.5) this._palm(ctx, x, baseY, size, sway, fill, edge);
-      else this._fern(ctx, x, baseY, size * 1.1, sway, fill, edge);
+      if (hash(k * 7) > 0.5) this._palm(fillP, bladeStroke, trunkStroke, x, baseY, size, sway);
+      else this._fern(fillP, bladeStroke, x, baseY, size * 1.1, sway);
     }
+    ctx.save();
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.shadowColor = edge;
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = fill;
+    ctx.fill(fillP);
+    ctx.strokeStyle = edge;
+    ctx.lineWidth = 1.4;
+    ctx.stroke(bladeStroke);
+    ctx.lineWidth = 2.4;
+    ctx.stroke(trunkStroke);
     ctx.restore();
   }
 
-  // Palm: several tapered blades fanning up from a slim trunk.
-  _palm(ctx, bx, by, size, sway, fill, edge) {
-    ctx.save();
-    ctx.translate(bx, by);
-    ctx.rotate(sway);
-    // trunk
-    ctx.strokeStyle = edge;
-    ctx.lineWidth = 2.4;
-    ctx.shadowColor = edge;
-    ctx.shadowBlur = 8;
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.quadraticCurveTo(size * 0.06, -size * 0.5, size * 0.02, -size);
-    ctx.stroke();
-    const top = { x: size * 0.02, y: -size };
+  // Palm: several tapered blades fanning up from a slim trunk. Geometry is written into
+  // the layer's shared paths in absolute coords (rotation baked in) so it can be batched.
+  _palm(fillP, bladeStroke, trunkStroke, bx, by, size, sway) {
+    const c = Math.cos(sway), s = Math.sin(sway);
+    const TX = (lx, ly) => bx + lx * c - ly * s;
+    const TY = (lx, ly) => by + lx * s + ly * c;
+    trunkStroke.moveTo(TX(0, 0), TY(0, 0));
+    trunkStroke.quadraticCurveTo(
+      TX(size * 0.06, -size * 0.5), TY(size * 0.06, -size * 0.5),
+      TX(size * 0.02, -size), TY(size * 0.02, -size));
+    const topX = TX(size * 0.02, -size), topY = TY(size * 0.02, -size);
     const blades = 7;
     for (let i = 0; i < blades; i++) {
       const t = i / (blades - 1);
-      const ang = -Math.PI * 0.5 + (t - 0.5) * Math.PI * 1.15;
+      const ang = -Math.PI * 0.5 + (t - 0.5) * Math.PI * 1.15 + sway;
       const len = size * (0.62 + 0.25 * Math.sin(t * Math.PI));
-      this._blade(ctx, top.x, top.y, ang, len, len * 0.16, fill, edge);
+      this._blade(fillP, bladeStroke, topX, topY, ang, len, len * 0.16);
     }
-    ctx.restore();
   }
 
-  // Fern: blades radiating from the base in a bushy clump.
-  _fern(ctx, bx, by, size, sway, fill, edge) {
-    ctx.save();
-    ctx.translate(bx, by);
-    ctx.rotate(sway * 0.5);
+  // Fern: blades radiating from the base in a bushy clump (base sits at (bx,by), so the
+  // sway rotation only tilts the blade angles).
+  _fern(fillP, bladeStroke, bx, by, size, sway) {
+    const rot = sway * 0.5;
     const blades = 9;
     for (let i = 0; i < blades; i++) {
       const t = i / (blades - 1);
-      const ang = -Math.PI * 0.5 + (t - 0.5) * Math.PI * 1.3;
+      const ang = -Math.PI * 0.5 + (t - 0.5) * Math.PI * 1.3 + rot;
       const len = size * (0.55 + 0.4 * Math.sin(t * Math.PI));
-      this._blade(ctx, 0, 0, ang, len, len * 0.13, fill, edge);
+      this._blade(fillP, bladeStroke, bx, by, ang, len, len * 0.13);
     }
-    ctx.restore();
   }
 
-  // One leaf blade: a pointed lens shape from (x,y) along `ang` for `len`, half-width `hw`.
-  _blade(ctx, x, y, ang, len, hw, fill, edge) {
+  // Append one leaf-blade lens (from (x,y) along `ang` for `len`, half-width `hw`) to
+  // both the fill and stroke batch paths.
+  _blade(fillP, strokeP, x, y, ang, len, hw) {
     const tx = x + Math.cos(ang) * len;
     const ty = y + Math.sin(ang) * len;
     const px = Math.cos(ang + Math.PI / 2) * hw;
     const py = Math.sin(ang + Math.PI / 2) * hw;
     const mx = (x + tx) / 2, my = (y + ty) / 2;
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.quadraticCurveTo(mx + px, my + py, tx, ty);
-    ctx.quadraticCurveTo(mx - px, my - py, x, y);
-    ctx.closePath();
-    ctx.fillStyle = fill;
-    ctx.fill();
-    ctx.strokeStyle = edge;
-    ctx.lineWidth = 1.4;
-    ctx.shadowColor = edge;
-    ctx.shadowBlur = 8;
-    ctx.stroke();
+    const bp = new Path2D();
+    bp.moveTo(x, y);
+    bp.quadraticCurveTo(mx + px, my + py, tx, ty);
+    bp.quadraticCurveTo(mx - px, my - py, x, y);
+    bp.closePath();
+    fillP.addPath(bp);
+    strokeP.addPath(bp);
   }
 
-  _spores(ctx, w, h, off, time) {
+  _spores(r, w, h, off, time) {
+    const ctx = r.ctx;
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
     const span = w + 80;
@@ -237,17 +258,13 @@ export class Background {
       if (y < 0) y += h;
       const a = 0.10 + 0.14 * (0.5 + 0.5 * Math.sin(time * 1.5 * s.spd + s.ph));
       ctx.globalAlpha = a;
-      ctx.shadowColor = "#bfeaff";
-      ctx.shadowBlur = 5;
-      ctx.fillStyle = "#e6f6ff";
-      ctx.beginPath();
-      ctx.arc(x, y, s.r, 0, TAU);
-      ctx.fill();
+      r.glowDot(x, y, s.r, "#e6f6ff");
     }
     ctx.restore();
   }
 
-  _fireflies(ctx, w, h, off, time) {
+  _fireflies(r, w, h, off, time) {
+    const ctx = r.ctx;
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
     for (const f of this.fireflies) {
@@ -255,85 +272,103 @@ export class Background {
       const y = f.y + Math.cos(time * f.spd * 0.8 + f.ph) * f.drift;
       const a = 0.35 + 0.45 * (0.5 + 0.5 * Math.sin(time * 3 * f.spd + f.ph));
       ctx.globalAlpha = a;
-      ctx.shadowColor = "#c9ff6a";
-      ctx.shadowBlur = 10;
-      ctx.fillStyle = "#eaffb0";
-      ctx.beginPath();
-      ctx.arc(x, y, f.r, 0, TAU);
-      ctx.fill();
+      r.glowDot(x, y, f.r * 1.4, "#eaffb0");
     }
     ctx.restore();
   }
 
-  // Big, soft, semi-transparent plants + hanging vines framing the view.
+  // Big, soft, semi-transparent plants + hanging vines framing the view. Batched by
+  // color into a handful of shadowed passes.
   _foreground(ctx, w, h, off, time) {
-    ctx.save();
-
-    // Nearest layer: a repeating band of big fronds. This is a proper parallax band —
-    // motifs scroll continuously and wrap in/out at the screen edges, so it moves with
-    // the camera (the parallax the eye likes) but never snaps.
+    // Nearest layer: a repeating band of big fronds, in two color variants.
+    const fr = {
+      mag: { fill: "rgba(20,6,26,0.82)", edge: "#ff3df0", fillP: new Path2D(), strokeP: new Path2D() },
+      cyan: { fill: "rgba(6,20,30,0.82)", edge: "#37f2ff", fillP: new Path2D(), strokeP: new Path2D() },
+    };
     const spacing = 220;
     const start = -((off % spacing) + spacing);
     for (let x = start; x <= w + spacing; x += spacing) {
       const k = Math.round((x + off) / spacing);
       const size = h * (0.4 + hash(k) * 0.18);
-      const magenta = hash(k * 3) > 0.5;
-      const fill = magenta ? "rgba(20,6,26,0.82)" : "rgba(6,20,30,0.82)";
-      const edge = magenta ? "#ff3df0" : "#37f2ff";
+      const b = hash(k * 3) > 0.5 ? fr.mag : fr.cyan;
       const lean = (hash(k * 7) - 0.5) * 0.9; // gentle left/right lean per frond
-      this._bottomFrond(ctx, x + hash(k * 5) * 50, h + 14, size, lean, fill, edge, time, k);
+      this._bottomFrond(b.fillP, b.strokeP, x + hash(k * 5) * 50, h + 14, size, lean, time, k);
     }
+    ctx.save();
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.globalAlpha = 0.82;
+    ctx.lineWidth = 1.4;
+    for (const key in fr) {
+      const b = fr[key];
+      ctx.shadowColor = b.edge;
+      ctx.shadowBlur = 8;
+      ctx.fillStyle = b.fill;
+      ctx.fill(b.fillP);
+      ctx.strokeStyle = b.edge;
+      ctx.stroke(b.strokeP);
+    }
+    ctx.restore();
 
-    // hanging vines from the top (same continuous-wrap parallax)
+    // Hanging vines from the top (same continuous-wrap parallax), batched by color.
+    const vb = {
+      a: { edge: "#2fd39a", lineP: new Path2D(), leafFill: new Path2D(), leafStroke: new Path2D() },
+      b: { edge: "#37f2ff", lineP: new Path2D(), leafFill: new Path2D(), leafStroke: new Path2D() },
+    };
     const vSpacing = 190;
     const vStart = -((off % vSpacing) + vSpacing);
     for (let x = vStart; x <= w + vSpacing; x += vSpacing) {
       const k = Math.round((x + off) / vSpacing);
-      this._vine(ctx, x + hash(k) * 60, -6, h * (0.28 + hash(k * 5) * 0.22), hash(k * 9) > 0.5 ? "#2fd39a" : "#37f2ff", time, k);
+      const bucket = hash(k * 9) > 0.5 ? vb.a : vb.b;
+      this._vine(bucket, x + hash(k) * 60, -6, h * (0.28 + hash(k * 5) * 0.22), time, k);
+    }
+    ctx.save();
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    for (const key in vb) {
+      const b = vb[key];
+      ctx.shadowColor = b.edge;
+      ctx.shadowBlur = 8;
+      ctx.globalAlpha = 0.55;
+      ctx.strokeStyle = b.edge;
+      ctx.lineWidth = 2;
+      ctx.stroke(b.lineP);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = "rgba(10,24,20,0.7)";
+      ctx.fill(b.leafFill);
+      ctx.lineWidth = 1.4;
+      ctx.stroke(b.leafStroke);
     }
     ctx.restore();
   }
 
-  // A big frond fanning up from the bottom edge, with a per-frond lean and gentle sway.
-  _bottomFrond(ctx, x, y, size, lean, fill, edge, time, seed) {
-    ctx.save();
-    ctx.translate(x, y);
-    const sway = Math.sin(time * 0.5 + seed) * 0.06;
-    ctx.rotate(lean + sway);
+  // A big frond fanning up from the bottom edge (origin at (x,y), so lean+sway only tilt
+  // the blade angles). Accumulates into the caller's fill/stroke batch paths.
+  _bottomFrond(fillP, strokeP, x, y, size, lean, time, seed) {
+    const rot = lean + Math.sin(time * 0.5 + seed) * 0.06;
     const blades = 7;
     for (let i = 0; i < blades; i++) {
       const t = i / (blades - 1);
-      const ang = -Math.PI / 2 + (t - 0.5) * Math.PI * 0.85; // fan around straight up
+      const ang = -Math.PI / 2 + (t - 0.5) * Math.PI * 0.85 + rot; // fan around straight up
       const len = size * (0.55 + 0.45 * Math.sin(t * Math.PI));
-      ctx.globalAlpha = 0.82;
-      this._blade(ctx, 0, 0, ang, len, len * 0.15, fill, edge);
+      this._blade(fillP, strokeP, x, y, ang, len, len * 0.15);
     }
-    ctx.restore();
   }
 
-  _vine(ctx, x, topY, len, edge, time, seed) {
-    ctx.save();
+  _vine(bucket, x, topY, len, time, seed) {
     const segs = 8;
     const pts = [];
     for (let i = 0; i <= segs; i++) {
       const t = i / segs;
       pts.push({ x: x + Math.sin(t * 3 + time * 0.6 + seed) * 10 * t, y: topY + len * t });
     }
-    // vine line first
-    ctx.strokeStyle = edge;
-    ctx.lineWidth = 2;
-    ctx.shadowColor = edge;
-    ctx.shadowBlur = 8;
-    ctx.globalAlpha = 0.55;
-    ctx.beginPath();
-    pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
-    ctx.stroke();
-    // then leaves along it
+    // vine line
+    pts.forEach((p, i) => (i === 0 ? bucket.lineP.moveTo(p.x, p.y) : bucket.lineP.lineTo(p.x, p.y)));
+    // leaves along it
     for (let i = 3; i < segs; i += 3) {
       const p = pts[i];
       const ang = (i % 2 ? 1 : -1) * 0.7;
-      this._blade(ctx, p.x, p.y, ang, 14, 4, "rgba(10,24,20,0.7)", edge);
+      this._blade(bucket.leafFill, bucket.leafStroke, p.x, p.y, ang, 14, 4);
     }
-    ctx.restore();
   }
 }

@@ -179,6 +179,9 @@ export class Game {
     this.particles.draw(r);
   }
 
+  // Tiles are drawn in batched passes so the expensive glow (shadowBlur) neon edges are
+  // stroked once for the whole screen instead of once per tile. Everything with the same
+  // style is accumulated into a Path2D, then filled/stroked in a single call.
   _drawTiles(r) {
     const ctx = r.ctx;
     const lvl = this.level;
@@ -188,86 +191,99 @@ export class Game {
     const r0 = clamp(Math.floor(this.camera.top / TILE) - 1, 0, lvl.rows - 1);
     const r1 = clamp(Math.ceil((this.camera.top + this.camera.vh) / TILE) + 1, 0, lvl.rows - 1);
 
+    const solidFill = new Path2D();   // dark block bodies
+    const gridPath = new Path2D();    // faint inner grid
+    const edgePath = new Path2D();    // bright neon edges (glow)
+    const onewayBar = new Path2D();   // one-way platform tops (glow)
+    const onewayDash = new Path2D();  // one-way support dashes
+    const lavaSurface = new Path2D(); // glowing wavy lava tops
+    let hasSolid = false, hasOneway = false, hasLavaSurf = false;
+    const lavaGrads = new Map();      // row-y -> cached vertical gradient
+
     for (let row = r0; row <= r1; row++) {
       for (let col = c0; col <= c1; col++) {
         const t = lvl.grid[row][col];
         if (t === T.EMPTY) continue;
         const x = col * TILE, y = row * TILE;
-        if (t === T.SOLID) this._drawSolid(ctx, lvl, x, y, col, row);
-        else if (t === T.ONEWAY) this._drawOneway(ctx, x, y);
-        else if (t === T.LAVA) this._drawLava(ctx, x, y, col, row);
+        if (t === T.SOLID) {
+          hasSolid = true;
+          solidFill.rect(x, y, TILE, TILE);
+          gridPath.rect(x + 0.5, y + 0.5, TILE - 1, TILE - 1);
+          // neon edge only on exposed faces
+          if (lvl.tileAt(col, row - 1) !== T.SOLID) { edgePath.moveTo(x, y); edgePath.lineTo(x + TILE, y); }
+          if (lvl.tileAt(col, row + 1) !== T.SOLID) { edgePath.moveTo(x, y + TILE); edgePath.lineTo(x + TILE, y + TILE); }
+          if (lvl.tileAt(col - 1, row) !== T.SOLID) { edgePath.moveTo(x, y); edgePath.lineTo(x, y + TILE); }
+          if (lvl.tileAt(col + 1, row) !== T.SOLID) { edgePath.moveTo(x + TILE, y); edgePath.lineTo(x + TILE, y + TILE); }
+        } else if (t === T.ONEWAY) {
+          hasOneway = true;
+          onewayBar.moveTo(x + 3, y + 4);
+          onewayBar.lineTo(x + TILE - 3, y + 4);
+          for (let i = 6; i < TILE; i += 8) {
+            onewayDash.moveTo(x + i, y + 6);
+            onewayDash.lineTo(x + i - 3, y + 12);
+          }
+        } else if (t === T.LAVA) {
+          // lava body: per-row vertical gradient (cached), no shadow -> cheap.
+          let grad = lavaGrads.get(y);
+          if (!grad) {
+            grad = ctx.createLinearGradient(0, y, 0, y + TILE);
+            grad.addColorStop(0, "#ff9a3d");
+            grad.addColorStop(1, "#8a1030");
+            lavaGrads.set(y, grad);
+          }
+          ctx.fillStyle = grad;
+          ctx.fillRect(x, y, TILE, TILE);
+          if (this.level.tileAt(col, row - 1) !== T.LAVA) {
+            hasLavaSurf = true;
+            for (let i = 0; i <= TILE; i += 4) {
+              const wy = y + 2 + Math.sin((x + i) * 0.15 + this.time * 4) * 2;
+              if (i === 0) lavaSurface.moveTo(x + i, wy);
+              else lavaSurface.lineTo(x + i, wy);
+            }
+          }
+        }
       }
     }
-  }
 
-  _drawSolid(ctx, lvl, x, y, col, row) {
-    // dark block body
-    ctx.fillStyle = "rgba(16,22,52,0.94)";
-    ctx.fillRect(x, y, TILE, TILE);
-    // faint inner grid
-    ctx.strokeStyle = "rgba(55,242,255,0.10)";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x + 0.5, y + 0.5, TILE - 1, TILE - 1);
-    // bright neon edge only on exposed faces
-    ctx.save();
-    ctx.shadowColor = "#37f2ff";
-    ctx.shadowBlur = 10;
-    ctx.strokeStyle = "#37f2ff";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    if (lvl.tileAt(col, row - 1) !== T.SOLID) { ctx.moveTo(x, y); ctx.lineTo(x + TILE, y); }
-    if (lvl.tileAt(col, row + 1) !== T.SOLID) { ctx.moveTo(x, y + TILE); ctx.lineTo(x + TILE, y + TILE); }
-    if (lvl.tileAt(col - 1, row) !== T.SOLID) { ctx.moveTo(x, y); ctx.lineTo(x, y + TILE); }
-    if (lvl.tileAt(col + 1, row) !== T.SOLID) { ctx.moveTo(x + TILE, y); ctx.lineTo(x + TILE, y + TILE); }
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  _drawOneway(ctx, x, y) {
-    ctx.save();
-    ctx.shadowColor = "#37f2ff";
-    ctx.shadowBlur = 12;
-    ctx.strokeStyle = "#8fe9ff";
-    ctx.lineWidth = 3;
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.moveTo(x + 3, y + 4);
-    ctx.lineTo(x + TILE - 3, y + 4);
-    ctx.stroke();
-    // support dashes
-    ctx.globalAlpha = 0.4;
-    ctx.lineWidth = 1.5;
-    for (let i = 6; i < TILE; i += 8) {
-      ctx.beginPath();
-      ctx.moveTo(x + i, y + 6);
-      ctx.lineTo(x + i - 3, y + 12);
-      ctx.stroke();
+    // --- Solid blocks -------------------------------------------------------
+    if (hasSolid) {
+      ctx.fillStyle = "rgba(16,22,52,0.94)";
+      ctx.fill(solidFill);
+      ctx.strokeStyle = "rgba(55,242,255,0.10)";
+      ctx.lineWidth = 1;
+      ctx.stroke(gridPath);
     }
-    ctx.restore();
-  }
-
-  _drawLava(ctx, x, y, col, row) {
-    const surface = this.level.tileAt(col, row - 1) !== T.LAVA;
-    const grad = ctx.createLinearGradient(0, y, 0, y + TILE);
-    grad.addColorStop(0, "#ff9a3d");
-    grad.addColorStop(1, "#8a1030");
-    ctx.fillStyle = grad;
-    ctx.fillRect(x, y, TILE, TILE);
-    if (surface) {
-      // glowing wavy top
+    // --- Glow passes (one shadowed stroke each) ------------------------------
+    if (hasSolid) {
+      ctx.save();
+      ctx.shadowColor = "#37f2ff";
+      ctx.shadowBlur = 10;
+      ctx.strokeStyle = "#37f2ff";
+      ctx.lineWidth = 2;
+      ctx.stroke(edgePath);
+      ctx.restore();
+    }
+    if (hasOneway) {
+      ctx.save();
+      ctx.lineCap = "round";
+      ctx.shadowColor = "#37f2ff";
+      ctx.shadowBlur = 12;
+      ctx.strokeStyle = "#8fe9ff";
+      ctx.lineWidth = 3;
+      ctx.stroke(onewayBar);
+      ctx.globalAlpha = 0.4;
+      ctx.lineWidth = 1.5;
+      ctx.stroke(onewayDash);
+      ctx.restore();
+    }
+    if (hasLavaSurf) {
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
       ctx.shadowColor = "#ff6a3d";
       ctx.shadowBlur = 16;
       ctx.strokeStyle = "#ffd08a";
       ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      for (let i = 0; i <= TILE; i += 4) {
-        const wy = y + 2 + Math.sin((x + i) * 0.15 + this.time * 4) * 2;
-        if (i === 0) ctx.moveTo(x + i, wy);
-        else ctx.lineTo(x + i, wy);
-      }
-      ctx.stroke();
+      ctx.stroke(lavaSurface);
       ctx.restore();
     }
   }

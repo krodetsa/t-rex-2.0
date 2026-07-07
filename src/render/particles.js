@@ -42,24 +42,23 @@ export class Particles {
     const ctx = r.ctx;
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
+    ctx.shadowBlur = 0; // glow comes from baked sprites, not per-dot shadow
     for (let i = 0; i < this.count; i++) {
       const p = this.pool[i];
       const t = p.life / p.maxLife;
       ctx.globalAlpha = Math.max(0, Math.min(1, t)) * p.alpha;
-      ctx.shadowColor = p.color;
-      ctx.shadowBlur = p.blur;
-      ctx.fillStyle = p.color;
       if (p.shape === "rect") {
+        // shard: soft glow sprite + a small solid core square
+        const s = p.size * (0.4 + 0.6 * t);
+        r.glowDot(p.x, p.y, s * 0.8, p.color);
         ctx.save();
         ctx.translate(p.x, p.y);
         ctx.rotate(p.rot);
-        const s = p.size * (0.4 + 0.6 * t);
+        ctx.fillStyle = p.color;
         ctx.fillRect(-s / 2, -s / 2, s, s);
         ctx.restore();
       } else {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size * (0.3 + 0.7 * t), 0, TAU);
-        ctx.fill();
+        r.glowDot(p.x, p.y, p.size * (0.3 + 0.7 * t), p.color);
       }
     }
     ctx.restore();
