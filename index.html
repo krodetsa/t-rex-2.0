@@ -37,6 +37,14 @@
         <li><b>Enter</b> — shoot fireball</li>
         <li><b>R</b> restart · <b>Esc</b> pause · <b>M</b> sound · <b>N</b> music</li>
       </ul>
+
+      <div id="titleBoard" class="boardWrap">
+        <div class="board-title">◆ TOP 3 ◆</div>
+        <table class="board">
+          <thead><tr><th class="rank">#</th><th>Name</th><th class="tm">Time</th><th class="kl">Kills</th><th class="dt">Deaths</th></tr></thead>
+          <tbody id="titleBoardBody"></tbody></table>
+        <div id="titleBoardMsg" class="board-msg">Loading…</div>
+      </div>
     </div>
 
     <!-- Pause screen -->
@@ -55,10 +63,27 @@
 
     <!-- Win screen -->
     <div id="win" class="screen hidden">
-      <h2 class="logo">YOU WON!</h2>
-      <p class="tag">The T-Rex is alive and you are incredible ❤</p>
+      <h2 class="logo small">YOU WON!</h2>
+      <p class="tag">Finished in <b id="winTime">0:00</b> · <b id="winKills">0</b> enemies slain</p>
+
+      <div id="winSave" class="saveRow">
+        <input id="nameInput" class="nameInput" type="text" maxlength="20"
+               placeholder="YOUR NAME" autocomplete="off" spellcheck="false" />
+        <button id="saveBtn" class="neonBtn">SAVE</button>
+      </div>
+      <div id="winSaveMsg" class="board-msg hidden"></div>
+
+      <div id="winBoard" class="boardWrap">
+        <div class="board-title">◆ LEADERBOARD ◆</div>
+        <table class="board">
+          <thead><tr><th class="rank">#</th><th>Name</th><th class="tm">Time</th><th class="kl">Kills</th><th class="dt">Deaths</th></tr></thead>
+          <tbody id="winBoardBody"></tbody>
+        </table>
+        <div id="winBoardMsg" class="board-msg hidden"></div>
+      </div>
+
       <p class="credit">Made by <a href="https://t.me/krodetsa" target="_blank" rel="noopener">Krodetsa</a></p>
-      <button id="againBtn" class="neonBtn">↺ PLAY AGAIN</button>
+      <button id="againBtn" class="neonBtn ghost">↺ PLAY AGAIN</button>
     </div>
   </div>
 

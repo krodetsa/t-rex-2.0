@@ -11,6 +11,7 @@ import { Background } from "./render/background.js";
 import { Particles } from "./render/particles.js";
 import { Game } from "./game/game.js";
 import { LEVELS } from "./game/levels.js";
+import { isConfigured, fetchTop, submitScore, formatTime } from "./core/leaderboard.js";
 
 const canvas = document.getElementById("game");
 const renderer = new Renderer(canvas);
@@ -28,8 +29,23 @@ const lifeCount = el("lifeCount");
 const muteBtn = el("muteBtn");
 const musicBtn = el("musicBtn");
 
+// Leaderboard elements
+const nameInput = el("nameInput");
+const saveBtn = el("saveBtn");
+const winSaveRow = el("winSave");
+const winSaveMsg = el("winSaveMsg");
+const winTimeEl = el("winTime");
+const winKillsEl = el("winKills");
+const winBoardBody = el("winBoardBody");
+const winBoardMsg = el("winBoardMsg");
+const titleBoardBody = el("titleBoardBody");
+const titleBoardMsg = el("titleBoardMsg");
+
 const deps = { audio, particles, camera, background };
-const session = { index: 0, lives: 3 };
+// runTime accumulates seconds spent actually playing (pauses excluded); kills/deaths are
+// the run totals. These are shown only in the leaderboard, not the in-game HUD. All reset
+// when a fresh run starts.
+const session = { index: 0, lives: 3, kills: 0, deaths: 0, runTime: 0 };
 let game = null;
 let state = "title"; // title | playing | paused | win
 let time = 0;
@@ -65,11 +81,13 @@ const hooks = {
     }
   },
   onLives: (delta) => {
+    if (delta < 0) session.deaths++; // every death counts toward the run total
     const n = session.lives + delta;
     setLives(Math.max(0, n));
     if (n <= 0) gameOver(); // out of lives -> game over, restart from level 1
   },
   onBones: (cur, total) => setBones(cur, total),
+  onKill: () => { session.kills++; },
 };
 
 function beginLevel(i) {
@@ -84,6 +102,9 @@ function beginLevel(i) {
 function startGame() {
   audio.resume();
   session.index = 0;
+  session.runTime = 0;
+  session.kills = 0;
+  session.deaths = 0;
   setLives(3);
   beginLevel(0);
 }
@@ -108,8 +129,96 @@ function winGame() {
   state = "win";
   game = null;
   hud.classList.add("hidden");
-  showScreen("win");
   audio.stopMusic();
+
+  const timeMs = session.runTime * 1000;
+  lastRun = { timeMs, kills: session.kills, deaths: session.deaths, saved: false };
+  winTimeEl.textContent = formatTime(timeMs);
+  winKillsEl.textContent = session.kills;
+
+  // Reset the save UI for this fresh result.
+  winBoardBody.innerHTML = "";
+  winSaveMsg.classList.add("hidden");
+  winSaveMsg.classList.remove("err");
+  const configured = isConfigured();
+  winSaveRow.classList.toggle("hidden", !configured);
+  saveBtn.disabled = false;
+  nameInput.disabled = false;
+  nameInput.value = localStorage.getItem("trex.name") || "";
+
+  showScreen("win");
+  loadWinBoard();
+  if (configured) setTimeout(() => nameInput.focus(), 60);
+}
+
+// ---- Leaderboard rendering / loading / saving -------------------------------
+let lastRun = null; // { timeMs, kills, deaths, saved } for the just-finished run
+
+// Build table rows from score records. `name` is set via textContent so other
+// players' names can never inject markup.
+function renderBoard(tbody, rows, highlight) {
+  tbody.innerHTML = "";
+  rows.forEach((row, i) => {
+    const tr = document.createElement("tr");
+    if (highlight && !highlight.used &&
+        row.name === highlight.name && Math.abs(row.time_ms - highlight.timeMs) < 1000) {
+      tr.className = "me";
+      highlight.used = true;
+    }
+    tr.innerHTML =
+      `<td class="rank">${i + 1}</td><td class="nm"></td>` +
+      `<td class="tm">${formatTime(row.time_ms)}</td>` +
+      `<td class="kl">${row.kills}</td><td class="dt">${row.deaths ?? 0}</td>`;
+    tr.querySelector(".nm").textContent = row.name;
+    tbody.appendChild(tr);
+  });
+}
+
+function boardMessage(msgEl, text, isError) {
+  msgEl.textContent = text;
+  msgEl.classList.remove("hidden");
+  msgEl.classList.toggle("err", !!isError);
+}
+
+async function loadTitleBoard() {
+  if (!isConfigured()) { boardMessage(titleBoardMsg, "Leaderboard offline"); return; }
+  const rows = await fetchTop(3);
+  if (rows === null) { boardMessage(titleBoardMsg, "Couldn't load leaderboard", true); return; }
+  if (!rows.length) { boardMessage(titleBoardMsg, "No scores yet — be the first!"); return; }
+  titleBoardMsg.classList.add("hidden");
+  renderBoard(titleBoardBody, rows);
+}
+
+async function loadWinBoard(highlight) {
+  if (!isConfigured()) {
+    boardMessage(winBoardMsg, "Add your Supabase keys in src/core/leaderboard.js to enable this.");
+    return;
+  }
+  const rows = await fetchTop(10);
+  if (rows === null) { boardMessage(winBoardMsg, "Couldn't load leaderboard.", true); return; }
+  if (!rows.length) { boardMessage(winBoardMsg, "No scores yet — be the first!"); return; }
+  winBoardMsg.classList.add("hidden");
+  renderBoard(winBoardBody, rows, highlight);
+}
+
+async function saveScore() {
+  if (!lastRun || lastRun.saved) return;
+  const name = (nameInput.value || "").trim() || "ANON";
+  saveBtn.disabled = true;
+  nameInput.disabled = true;
+  boardMessage(winSaveMsg, "Saving…");
+  const ok = await submitScore({ name, timeMs: lastRun.timeMs, kills: lastRun.kills, deaths: lastRun.deaths });
+  if (ok) {
+    lastRun.saved = true;
+    localStorage.setItem("trex.name", name);
+    boardMessage(winSaveMsg, "Saved! 🎉");
+    winSaveRow.classList.add("hidden");
+    loadWinBoard({ name, timeMs: lastRun.timeMs, used: false });
+  } else {
+    boardMessage(winSaveMsg, "Couldn't save — check your connection.", true);
+    saveBtn.disabled = false;
+    nameInput.disabled = false;
+  }
 }
 
 function gameOver() {
@@ -147,6 +256,10 @@ el("resumeBtn").addEventListener("click", togglePause);
 el("restartBtn").addEventListener("click", () => { togglePause(); restartLevel(); });
 el("againBtn").addEventListener("click", startGame);
 el("retryBtn").addEventListener("click", startGame);
+saveBtn.addEventListener("click", saveScore);
+nameInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); saveScore(); }
+});
 muteBtn.addEventListener("click", () => {
   audio.resume();
   const muted = audio.toggleMute();
@@ -167,7 +280,10 @@ window.addEventListener("resize", () => {
 const loop = createLoop({
   update: (dt) => {
     time += dt;
-    if (state === "playing" && game) game.update(dt, input);
+    if (state === "playing" && game) {
+      session.runTime += dt; // only counts while actively playing (not paused/screens)
+      game.update(dt, input);
+    }
     input.endStep();
   },
   render: (alpha) => {
@@ -183,12 +299,14 @@ const loop = createLoop({
 });
 
 showScreen("title");
+loadTitleBoard();
 loop.start();
 
 // Debug handle (harmless; used for in-browser verification).
 window.__dbg = {
   get state() { return state; },
   get game() { return game; },
+  session,
   input,
   audio,
 };

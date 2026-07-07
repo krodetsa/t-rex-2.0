@@ -24,7 +24,15 @@ export function createInput(onEdge) {
     listeners.push([type, fn]);
   }
 
+  // Don't hijack keys while the user is typing in a text field (e.g. the
+  // leaderboard name input) — otherwise A/D/W/R/Space/Enter would fire game actions.
+  const typing = (e) => {
+    const t = e.target;
+    return t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
+  };
+
   on("keydown", (e) => {
+    if (typing(e)) return;
     const action = MAP[e.code];
     if (!action) return;
     e.preventDefault();
@@ -36,6 +44,7 @@ export function createInput(onEdge) {
   });
 
   on("keyup", (e) => {
+    if (typing(e)) return;
     const action = MAP[e.code];
     if (!action) return;
     e.preventDefault();

@@ -21,7 +21,7 @@ export class Game {
     this.particles = deps.particles;
     this.camera = deps.camera;
     this.background = deps.background;
-    this.hooks = hooks; // { onComplete, onLives, onBones }
+    this.hooks = hooks; // { onComplete, onLives, onBones, onKill }
 
     const fx = {
       jump: (x, y) => { this.particles.jump(x, y); this.audio.jump(); },
@@ -242,6 +242,7 @@ export class Game {
             pr.dead = true;
             this.particles.death(e.cx, e.cy);
             this.audio.enemyHit();
+            if (this.hooks.onKill) this.hooks.onKill();
             break;
           }
         }
