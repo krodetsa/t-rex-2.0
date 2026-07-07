@@ -59,7 +59,7 @@ function moveY(body, level, dy, flags) {
       const tile = level.tileAt(c, row);
       const isFloor =
         tile === T.SOLID ||
-        (tile === T.ONEWAY && prevBottom <= top + 1); // was above the platform
+        ((tile === T.ONEWAY || tile === T.CRUMBLE) && prevBottom <= top + 1); // was above the platform
       if (isFloor) {
         body.y = top - body.h;
         body.vy = 0;

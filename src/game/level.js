@@ -10,6 +10,7 @@ export const T = {
   SOLID: 1,
   ONEWAY: 2, // land from above, pass through from below/sides
   LAVA: 3, // deadly, non-solid
+  CRUMBLE: 4, // one-way platform that collapses ~2s after the player stands on it
 };
 
 // ASCII legend
@@ -17,10 +18,12 @@ export const T = {
 //   '@' player spawn          'o' bone (collectible)    'G' goal portal
 //   'h' horizontal fireball   'v' vertical fireball      space / '.' empty
 //   'E' enemy dino (patrols)  'S' enemy dino (shoots fireballs at the T-Rex)
+//   '-' crumbling platform (breaks a couple seconds after you step on it)
 const TILE_CHARS = {
   "#": T.SOLID,
   "=": T.ONEWAY,
   "~": T.LAVA,
+  "-": T.CRUMBLE,
 };
 const ENTITY_CHARS = {
   "@": "spawn",

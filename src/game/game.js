@@ -12,6 +12,7 @@ import { aabb, clamp } from "../core/math.js";
 const RESPAWN_DELAY = 1.0; // s of death animation before respawn
 const WIN_DELAY = 0.7;
 const SHOOT_COOLDOWN = 0.3; // s between the T-Rex's fireballs
+const CRUMBLE_DELAY = 0.9;  // s a crumbling platform holds after you step on it
 
 export class Game {
   constructor(plan, deps, hooks) {
@@ -47,6 +48,7 @@ export class Game {
     this.bonesTotal = this._boneSpecs.length;
     this._spawnBones();
     this._spawnEnemies();
+    this._initCrumbles();
 
     // Cache the lava tile columns per row for cheap ember spawning.
     this._lavaSurface = this._findLavaSurface();
@@ -76,6 +78,61 @@ export class Game {
     this.enemies = this._enemySpecs.map(({ spec, kind }) => new Enemy(spec, kind));
     this.projectiles = [];
     this.shootCd = 0;
+  }
+
+  // Scan the grid once for crumbling-platform tiles and build their live state.
+  // Cells are mutated to EMPTY when they collapse and restored on respawn.
+  _initCrumbles() {
+    this.crumbles = [];
+    this._crumbleMap = new Map();
+    for (let r = 0; r < this.level.rows; r++) {
+      for (let c = 0; c < this.level.cols; c++) {
+        if (this.level.grid[r][c] === T.CRUMBLE) {
+          const cell = { row: r, col: c, state: "idle", timer: 0 };
+          this.crumbles.push(cell);
+          this._crumbleMap.set(r * this.level.cols + c, cell);
+        }
+      }
+    }
+  }
+
+  // Restore every crumbling platform (called on respawn).
+  _resetCrumbles() {
+    for (const c of this.crumbles) {
+      c.state = "idle";
+      c.timer = 0;
+      this.level.grid[c.row][c.col] = T.CRUMBLE;
+    }
+  }
+
+  // Trigger the platform under the player's feet, tick shaking timers, and remove
+  // collapsed tiles from the grid so the player falls through.
+  _updateCrumbles(dt) {
+    if (!this.crumbles.length) return;
+    if (this.player.grounded) {
+      const pb = this.player.body;
+      const footRow = Math.floor((pb.y + pb.h + 0.001) / TILE);
+      const c0 = Math.floor(pb.x / TILE);
+      const c1 = Math.floor((pb.x + pb.w - 1e-4) / TILE);
+      for (let col = c0; col <= c1; col++) {
+        const cell = this._crumbleMap.get(footRow * this.level.cols + col);
+        if (cell && cell.state === "idle") {
+          cell.state = "shaking";
+          cell.timer = CRUMBLE_DELAY;
+          this.audio.crack();
+        }
+      }
+    }
+    for (const c of this.crumbles) {
+      if (c.state !== "shaking") continue;
+      c.timer -= dt;
+      if (c.timer <= 0) {
+        c.state = "gone";
+        this.level.grid[c.row][c.col] = T.EMPTY;
+        this.particles.land(c.col * TILE + TILE / 2, c.row * TILE + 6, 0.6);
+        this.audio.crumble();
+      }
+    }
   }
 
   _findLavaSurface() {
@@ -130,6 +187,9 @@ export class Game {
 
     // Camera follows the player center with lookahead from its horizontal velocity.
     this.camera.follow({ x: this.player.cx, y: this.player.cy }, this.player.body.vx, dt, this.level);
+
+    // Crumbling platforms: arm the one underfoot, collapse timed-out ones.
+    this._updateCrumbles(dt);
 
     // --- Collisions ---------------------------------------------------------
     const pb = this.player.body;
@@ -222,6 +282,7 @@ export class Game {
     this.player.reset();
     this._spawnBones();   // collected bones come back on death
     this._spawnEnemies(); // killed enemies and stray fireballs reset too
+    this._resetCrumbles(); // collapsed platforms are rebuilt
     this.camera.snapTo(this.player.cx, this.player.cy);
     this.camera._clamp(this.level);
     this.state = "play";
@@ -242,6 +303,7 @@ export class Game {
 
     r.beginWorld(this.camera);
     this._drawTiles(r);
+    this._drawCrumbles(r);
     for (const b of this.bones) b.draw(r, alpha, this.time);
     if (this.goal) this.goal.draw(r, alpha, this.time);
     for (const f of this.fireballs) f.draw(r, alpha, this.time);
@@ -249,6 +311,52 @@ export class Game {
     if (!this.player.dead) drawTrex(r, this.player, alpha, this.time);
     for (const pr of this.projectiles) pr.draw(r, alpha, this.time);
     this.particles.draw(r);
+  }
+
+  // Crumbling platforms are drawn here (not in the batched tile pass) so each can carry
+  // its own shake offset and warning colour. Idle ones look identical to a one-way '='.
+  _drawCrumbles(r) {
+    if (!this.crumbles.length) return;
+    const ctx = r.ctx;
+    for (const c of this.crumbles) {
+      if (c.state === "gone") continue;
+      const x = c.col * TILE, y = c.row * TILE;
+      let color = "#8fe9ff", glow = "#37f2ff", dx = 0, dy = 0;
+      if (c.state === "shaking") {
+        const progress = 1 - c.timer / CRUMBLE_DELAY; // 0 -> 1 as it nears collapse
+        const amp = 0.6 + progress * 2.6;
+        dx = Math.sin(this.time * 42) * amp;
+        dy = Math.cos(this.time * 37) * amp * 0.5;
+        if (progress > 0.55) {
+          // about to go: flashing hot red/orange
+          color = Math.sin(this.time * 30) > 0 ? "#ff4d5a" : "#ffb03d";
+          glow = "#ff466e";
+        } else {
+          color = "#ffd23d";
+          glow = "#ffa83d";
+        }
+      }
+      ctx.save();
+      ctx.translate(dx, dy);
+      ctx.lineCap = "round";
+      ctx.shadowColor = glow;
+      ctx.shadowBlur = 12;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(x + 3, y + 4);
+      ctx.lineTo(x + TILE - 3, y + 4);
+      ctx.stroke();
+      ctx.globalAlpha = 0.4;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      for (let i = 6; i < TILE; i += 8) {
+        ctx.moveTo(x + i, y + 6);
+        ctx.lineTo(x + i - 3, y + 12);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
   // Tiles are drawn in batched passes so the expensive glow (shadowBlur) neon edges are
