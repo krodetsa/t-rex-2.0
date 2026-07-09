@@ -16,9 +16,8 @@ const SHOOT_COOLDOWN = 0.3; // s between the T-Rex's fireballs
 const CRUMBLE_DELAY = 0.9;  // s a crumbling platform holds after you step on it
 
 // --- Boss-level tuning -------------------------------------------------------
-const PLAYER_MAX_HP = 1;        // the boss-arena health bar is tracked as a 0..1 fraction
-const PLAYER_HIT = 0.25;        // every hit removes a quarter of a life
-const PLAYER_INVULN = 0.8;      // s of i-frames after a hit (so one fireball = one quarter)
+// The player dies in a single hit here, exactly like the rest of the game (fireball,
+// projectile or a bump into an enemy/boss). Only the boss carries a health bar.
 const SKY_ENEMY_INTERVAL = 60;  // s between shooters dropped in from the sky
 const BOSS_SHOT_SPEED = 300;    // px/s of a boss fireball, aimed at the T-Rex
 
@@ -118,8 +117,6 @@ export class Game {
 
   _initBoss() {
     this.boss = new Boss(this._bossSpec, this._arenaBounds());
-    this.playerHp = PLAYER_MAX_HP;
-    this.playerInvuln = 1.0;             // brief grace as the fight opens
     this.skyTimer = SKY_ENEMY_INTERVAL;  // first reinforcement after a minute
     // Callbacks the boss uses to spawn fireballs and kick off landing fx.
     this._bossApi = {
@@ -148,15 +145,11 @@ export class Game {
     this.audio.enemyShoot();
   }
 
-  // The player took a hit on the boss level: lose a quarter of a life (unless still in
-  // i-frames from the last hit, or the fight is already decided). Reaching zero is a death.
-  _hurtPlayer() {
-    if (this.state !== "play" || this.playerInvuln > 0 || (this.boss && this.boss.dying)) return;
-    this.playerHp = Math.max(0, this.playerHp - PLAYER_HIT);
-    this.playerInvuln = PLAYER_INVULN;
-    this.particles.land(this.player.cx, this.player.cy, 0.8);
-    this.audio.hurt();
-    if (this.playerHp <= 0.001) this._die();
+  // A hit on the boss level is instantly lethal, just like the rest of the game — except
+  // once the boss is dying (victory is already locked in) the player can't be killed.
+  _hitPlayer() {
+    if (this.boss && this.boss.dying) return;
+    this._die();
   }
 
   // Per-step boss-arena logic (movement, spawns, combat, contact damage). Runs only
@@ -167,7 +160,6 @@ export class Game {
 
     this.player.update(dt, input, this.level);
     this.camera.follow({ x: this.player.cx, y: this.player.cy }, pb.vx, dt, this.level);
-    this.playerInvuln = Math.max(0, this.playerInvuln - dt);
 
     boss.update(dt, this.player, this._bossApi);
 
@@ -226,7 +218,7 @@ export class Game {
         }
       } else if (aabb(pr.x, pr.y, pr.w, pr.h, pb.x, pb.y, pb.w, pb.h)) {
         pr.dead = true;
-        this._hurtPlayer();
+        this._hitPlayer();
       }
     }
     this.projectiles = this.projectiles.filter((p) => !p.dead);
@@ -234,11 +226,11 @@ export class Game {
 
     // Contact damage: bouncing fireballs, the boss's body, and sky-enemy bodies.
     for (const f of this.fireballs) {
-      if (aabb(pb.x, pb.y, pb.w, pb.h, f.body.x, f.body.y, f.w, f.h)) { this._hurtPlayer(); break; }
+      if (aabb(pb.x, pb.y, pb.w, pb.h, f.body.x, f.body.y, f.w, f.h)) { this._hitPlayer(); break; }
     }
-    if (!boss.dying && aabb(pb.x, pb.y, pb.w, pb.h, boss.x, boss.y, boss.w, boss.h)) this._hurtPlayer();
+    if (!boss.dying && aabb(pb.x, pb.y, pb.w, pb.h, boss.x, boss.y, boss.w, boss.h)) this._hitPlayer();
     for (const e of this.enemies) {
-      if (aabb(pb.x, pb.y, pb.w, pb.h, e.body.x, e.body.y, e.w, e.h)) { this._hurtPlayer(); break; }
+      if (aabb(pb.x, pb.y, pb.w, pb.h, e.body.x, e.body.y, e.w, e.h)) { this._hitPlayer(); break; }
     }
   }
 
@@ -448,9 +440,7 @@ export class Game {
     this.player.reset();
     if (this.isBoss) {
       // The boss fight is a war of attrition: the boss keeps its current HP across the
-      // player's deaths. Only the player, its projectiles and i-frames reset.
-      this.playerHp = PLAYER_MAX_HP;
-      this.playerInvuln = 1.0;
+      // player's deaths. Only the player and its stray projectiles reset.
       this.projectiles = [];
     } else {
       this._spawnBones();   // collected bones come back on death
@@ -469,7 +459,9 @@ export class Game {
     // Celebrate at the goal portal, or (on the boss level, which has none) at the player.
     const at = this.goal || this.player;
     this.particles.boneBurst(at.cx, at.cy);
-    this.audio.win();
+    // Beating the boss plays a longer victory jingle; normal levels get the short flourish.
+    if (this.isBoss) this.audio.bossVictory();
+    else this.audio.win();
   }
 
   // ---------------------------------------------------------------- rendering
@@ -491,21 +483,13 @@ export class Game {
     if (this.isBoss) this._drawBossHud(r, alpha);
   }
 
-  // Floating health bars: a big one over the boss's head and a small one over the T-Rex.
-  // Drawn in world space so each tracks its owner as the camera moves.
+  // Floating boss health bar, drawn in world space above the boss's head so it tracks the
+  // boss as the camera moves. (The player dies in one hit and has no bar.)
   _drawBossHud(r, alpha) {
     if (this.boss && this.boss.alive && !this.boss.dying) {
       const p = this.boss.renderPos(alpha);
       drawHealthBar(r.ctx, p.x + this.boss.w / 2, p.y - 16, 74, 8,
-        this.boss.hp / this.boss.maxHp, "#ff2e6e", "BOSS");
-    }
-    if (!this.player.dead) {
-      const pp = this.player.renderPos(alpha);
-      const blink = this.playerInvuln > 0 && Math.sin(this.time * 40) < 0; // flicker while hurt
-      if (!blink) {
-        drawHealthBar(r.ctx, pp.x + this.player.w / 2, pp.y - 12, 42, 5,
-          this.playerHp, "#4dffa3");
-      }
+        this.boss.hp / this.boss.maxHp, "#ff2e6e");
     }
   }
 

@@ -101,12 +101,48 @@ export class Audio {
   enemyHit() { this._tone("square", 520, 90, 0.22, 0.22); this._noise(0.12, 0.14, 700); }
   crack() { this._tone("square", 220, 180, 0.05, 0.14); this._noise(0.05, 0.08, 1600); }
   crumble() { this._tone("sawtooth", 160, 50, 0.35, 0.22); this._noise(0.3, 0.2, 500); }
-  hurt() { this._tone("square", 240, 120, 0.18, 0.24); this._noise(0.12, 0.14, 900); }
   bossSlam() { this._tone("sawtooth", 110, 40, 0.4, 0.3); this._noise(0.35, 0.24, 400); }
 
   win() {
     const notes = [523, 659, 784, 1046];
     notes.forEach((f, i) => setTimeout(() => this._tone("sawtooth", f, f, 0.9, 0.2), i * 110));
+  }
+
+  // ~5s triumphant fanfare played when the boss is defeated: a rising call, an answer a
+  // third higher, then a held C-major chord with a sparkle tail. Each entry is
+  // [freq, startSec, durSec, gain, waveform].
+  bossVictory() {
+    if (!this.ctx || this.muted) return;
+    const N = { C5: 523, E5: 659, G5: 784, B5: 988, C6: 1047, D6: 1175, E6: 1319, G6: 1568 };
+    const seq = [
+      // fanfare call
+      [N.C5, 0.00, 0.14, 0.20, "square"],
+      [N.E5, 0.14, 0.14, 0.20, "square"],
+      [N.G5, 0.28, 0.14, 0.20, "square"],
+      [N.C6, 0.42, 0.34, 0.24, "square"],
+      [N.G5, 0.78, 0.14, 0.18, "square"],
+      [N.C6, 0.92, 0.50, 0.24, "square"],
+      // answer, a third higher
+      [N.E5, 1.60, 0.14, 0.20, "square"],
+      [N.G5, 1.74, 0.14, 0.20, "square"],
+      [N.B5, 1.88, 0.14, 0.20, "square"],
+      [N.E6, 2.02, 0.34, 0.24, "square"],
+      [N.D6, 2.40, 0.14, 0.18, "square"],
+      [N.E6, 2.54, 0.60, 0.24, "square"],
+      // final held major chord + octave sparkle (rings out to ~4.9s)
+      [N.C5, 3.30, 1.60, 0.16, "sawtooth"],
+      [N.E5, 3.30, 1.60, 0.14, "sawtooth"],
+      [N.G5, 3.30, 1.60, 0.14, "sawtooth"],
+      [N.C6, 3.30, 1.60, 0.16, "triangle"],
+      [N.G6, 3.40, 1.30, 0.10, "sine"],
+      [N.E6, 4.00, 1.00, 0.10, "triangle"],
+    ];
+    for (const [f, t, d, g, type] of seq) {
+      setTimeout(() => this._tone(type, f, f, d, g), t * 1000);
+    }
+    // Percussive accents under the two fanfare peaks.
+    setTimeout(() => this._noise(0.12, 0.10, 3000), 420);
+    setTimeout(() => this._noise(0.12, 0.10, 3000), 2020);
   }
 
   // Bright three-note chime + shimmer tail for an unlocked achievement (Steam-ish).

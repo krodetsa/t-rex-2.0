@@ -177,132 +177,154 @@ export class Boss {
   draw(r, alpha, time) { drawBoss(r, this, alpha, time); }
 }
 
-// Procedural neon boss dino — a bigger, meaner silhouette than the player's T-Rex:
-// heavy jaw with teeth, back horns/spikes, a thick tail, and a glowing eye. Mirrored to
-// face the player. Origin is the feet; +x is "forward" (facing applied as a flip).
+// Procedural neon pterodactyl (Pteranodon) boss — much bigger than the player's T-Rex:
+// a slim body slung under two great membrane wings that beat up and down, a long toothy
+// beak, a swept-back head crest, dangling clawed legs and a short tail. Mirrored to face
+// the player. Origin is the feet; +x is "forward" (facing applied as a flip).
 function drawBoss(r, b, alpha, time) {
   const ctx = r.ctx;
   const pos = b.renderPos(alpha);
   const feetX = pos.x + b.w / 2;
   const feetY = pos.y + b.h;
   const outline = b.hurtFlash > 0 ? "#ffffff" : NEON;
-  const bob = Math.sin(time * 2.4) * 2 + (b.airborne ? -3 : 0);
   const dying = b.dying;
+
+  // Wingbeat: faster while charging/slamming, lazier while it drifts. `flap` is -1..1;
+  // the body lifts a touch on the downstroke so the whole creature seems to fly.
+  const flapSpeed = (b.airborne || b.action === "charge") ? 12 : 7;
+  const flap = Math.sin(time * flapSpeed);
+  const bodyBob = flap * 2.4;
 
   ctx.save();
   ctx.translate(feetX, feetY);
   ctx.scale(b.facing, 1);
-  if (dying) { // topple over as it dies
+  if (dying) { // tumble out of the sky as it dies
     const t = 1 - Math.max(0, b.deathT) / 1.2;
-    ctx.rotate(t * 0.5);
+    ctx.rotate(t * 0.7);
     ctx.globalAlpha = Math.max(0, 1 - t);
   }
-  ctx.translate(0, bob);
   // Everything is drawn in a ~1.9x scaled space so it dwarfs the 22x30 player.
   ctx.scale(1.9, 1.9);
+  ctx.translate(0, bodyBob);
 
-  // --- Tail (behind) --------------------------------------------------------
+  // --- Wings (behind the body; both beat symmetrically) ---------------------
+  drawWing(ctx, -1, flap, outline);
+  drawWing(ctx, 1, flap, outline);
+
+  // --- Short tail (behind) --------------------------------------------------
   ctx.save();
-  ctx.shadowColor = NEON2; ctx.shadowBlur = 14;
-  ctx.strokeStyle = NEON2; ctx.lineWidth = 3; ctx.lineCap = "round";
+  ctx.shadowColor = NEON2; ctx.shadowBlur = 10;
+  ctx.strokeStyle = NEON2; ctx.lineWidth = 2.4; ctx.lineCap = "round";
   ctx.beginPath();
-  ctx.moveTo(-8, -18);
-  ctx.quadraticCurveTo(-26, -16 + Math.sin(time * 3) * 3, -34, -3);
+  ctx.moveTo(-6, -22);
+  ctx.lineTo(-15, -19 + Math.sin(time * 3) * 2);
   ctx.stroke();
   ctx.restore();
 
-  // --- Legs -----------------------------------------------------------------
-  drawBossLeg(ctx, -5, outline, time, 0);
-  drawBossLeg(ctx, 6, outline, time, Math.PI);
+  // --- Dangling clawed legs -------------------------------------------------
+  ctx.save();
+  ctx.shadowColor = outline; ctx.shadowBlur = 8;
+  ctx.strokeStyle = outline; ctx.lineWidth = 2.2; ctx.lineCap = "round"; ctx.lineJoin = "round";
+  for (const lx of [-4, 3]) {
+    const swing = Math.sin(time * 3 + lx) * 1.6;
+    ctx.beginPath();
+    ctx.moveTo(lx, -16);
+    ctx.lineTo(lx + swing, -6);
+    ctx.lineTo(lx + swing + 3, -2); // little claw
+    ctx.stroke();
+  }
+  ctx.restore();
 
   // --- Body -----------------------------------------------------------------
   ctx.save();
   ctx.shadowColor = outline; ctx.shadowBlur = 16;
   ctx.fillStyle = BODY; ctx.strokeStyle = outline; ctx.lineWidth = 2.4;
   ctx.beginPath();
-  ctx.ellipse(-2, -20, 15, 17, 0, 0, TAU);
+  ctx.ellipse(0, -22, 8, 13, 0, 0, TAU);
   ctx.fill(); ctx.stroke();
   ctx.restore();
 
-  // --- Back spikes ----------------------------------------------------------
-  ctx.save();
-  ctx.shadowColor = NEON2; ctx.shadowBlur = 10;
-  ctx.fillStyle = NEON2;
-  for (const [x, y, s] of [[-12, -30, 5], [-6, -36, 7], [1, -38, 8], [8, -36, 6], [14, -30, 5]]) {
-    ctx.beginPath();
-    ctx.moveTo(x - 3, y + s);
-    ctx.lineTo(x, y - s);
-    ctx.lineTo(x + 3, y + s);
-    ctx.closePath();
-    ctx.fill();
-  }
-  ctx.restore();
-
-  // --- Head + heavy jaw -----------------------------------------------------
+  // --- Neck + head + long beak (one filled shape) ---------------------------
   ctx.save();
   ctx.shadowColor = outline; ctx.shadowBlur = 14;
-  ctx.fillStyle = BODY; ctx.strokeStyle = outline; ctx.lineWidth = 2.4;
+  ctx.fillStyle = BODY; ctx.strokeStyle = outline; ctx.lineWidth = 2.4; ctx.lineJoin = "round";
   ctx.beginPath();
-  ctx.moveTo(6, -40);
-  ctx.quadraticCurveTo(30, -44, 34, -32); // top skull -> snout
-  ctx.lineTo(33, -24);                    // snout tip
-  ctx.lineTo(14, -22);                    // lower jaw
-  ctx.quadraticCurveTo(8, -26, 6, -33);   // jaw hinge
+  ctx.moveTo(4, -34);                       // lower neck
+  ctx.quadraticCurveTo(9, -42, 12, -43);    // up the neck to the skull
+  ctx.lineTo(34, -39);                      // upper beak to the tip
+  ctx.lineTo(34, -37);                      // beak tip (thin)
+  ctx.quadraticCurveTo(20, -36, 13, -37);   // lower beak / jaw
+  ctx.quadraticCurveTo(7, -33, 4, -34);     // back down the throat
   ctx.closePath();
   ctx.fill(); ctx.stroke();
   ctx.restore();
 
-  // teeth
+  // teeth along the beak
   ctx.save();
   ctx.fillStyle = "#ffe8f4";
   ctx.shadowColor = "#ffffff"; ctx.shadowBlur = 4;
   for (let i = 0; i < 4; i++) {
-    const tx = 18 + i * 4;
+    const tx = 20 + i * 4;
     ctx.beginPath();
-    ctx.moveTo(tx, -25);
-    ctx.lineTo(tx + 1.6, -25);
-    ctx.lineTo(tx + 0.8, -21.5);
+    ctx.moveTo(tx, -37.5);
+    ctx.lineTo(tx + 1.6, -37.5);
+    ctx.lineTo(tx + 0.8, -35);
     ctx.closePath();
     ctx.fill();
   }
   ctx.restore();
 
-  // brow horn
+  // --- Swept-back head crest (the Pteranodon signature) ---------------------
   ctx.save();
-  ctx.shadowColor = NEON2; ctx.shadowBlur = 8;
-  ctx.strokeStyle = NEON2; ctx.lineWidth = 2.4; ctx.lineCap = "round";
+  ctx.shadowColor = NEON2; ctx.shadowBlur = 12;
+  ctx.fillStyle = "rgba(198,120,255,0.55)"; ctx.strokeStyle = NEON2; ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(12, -40);
-  ctx.lineTo(9, -49);
-  ctx.stroke();
+  ctx.moveTo(12, -42);
+  ctx.lineTo(-2, -50);   // crest sweeps up and back
+  ctx.lineTo(9, -43);
+  ctx.closePath();
+  ctx.fill(); ctx.stroke();
   ctx.restore();
 
   // eye (molten, pulsing)
-  const eye = 2.4 + Math.sin(time * 6) * 0.5;
+  const eye = 1.9 + Math.sin(time * 6) * 0.4;
   ctx.save();
   ctx.shadowColor = EYE; ctx.shadowBlur = 12;
   ctx.fillStyle = EYE;
   ctx.beginPath();
-  ctx.arc(16, -35, eye, 0, TAU);
+  ctx.arc(14, -40, eye, 0, TAU);
   ctx.fill();
   ctx.restore();
 
   ctx.restore();
 }
 
-function drawBossLeg(ctx, hipX, color, time, offset) {
-  const hipY = -14;
-  const swing = Math.sin(time * 2 + offset) * 2;
-  const footX = hipX + swing;
-  const footY = -1;
+// One membrane wing. `side` is -1 (left) or +1 (right). `flap` (-1..1) sweeps the wingtip
+// up and down; the membrane is a translucent neon sheet stretched along a finger spar.
+function drawWing(ctx, side, flap, color) {
+  const up = flap * 15;                       // vertical wingtip travel
+  const rootX = side * 4;
+  const elbowX = side * 16;
+  const elbowY = -34 - up * 0.5;
+  const tipX = side * (32 - Math.abs(flap) * 4); // draws in slightly at the extremes
+  const tipY = -30 - up;
+
   ctx.save();
-  ctx.shadowColor = color; ctx.shadowBlur = 8;
-  ctx.strokeStyle = color; ctx.lineWidth = 4; ctx.lineCap = "round"; ctx.lineJoin = "round";
+  ctx.shadowColor = NEON2; ctx.shadowBlur = 14;
+  ctx.strokeStyle = color; ctx.lineWidth = 2.4; ctx.lineJoin = "round"; ctx.lineCap = "round";
+  ctx.fillStyle = "rgba(255,46,110,0.16)";
+  // Membrane: shoulder -> leading edge to the tip -> trailing edge back to the hip.
   ctx.beginPath();
-  ctx.moveTo(hipX, hipY);
-  ctx.lineTo((hipX + footX) / 2 + 3, (hipY + footY) / 2);
-  ctx.lineTo(footX, footY);
-  ctx.lineTo(footX + 4, footY);
+  ctx.moveTo(rootX, -32);
+  ctx.quadraticCurveTo(elbowX, elbowY, tipX, tipY);
+  ctx.quadraticCurveTo(side * 18, -18 - up * 0.25, rootX, -18);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  // Bright finger spar along the leading edge.
+  ctx.beginPath();
+  ctx.moveTo(rootX, -32);
+  ctx.quadraticCurveTo(elbowX, elbowY, tipX, tipY);
   ctx.stroke();
   ctx.restore();
 }
