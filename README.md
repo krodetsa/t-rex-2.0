@@ -4,12 +4,12 @@
 
 
 A neon, synthwave‑flavoured T‑Rex platformer that runs entirely in the browser. Sprint,
-jump and blast fireballs through six hand‑authored levels of glowing jungle — then face a
+jump and blast fireballs through six hand‑authored levels of glowing jungle - then face a
 giant wing‑flapping pterodactyl in the final boss arena.
 
 Everything is procedural: the graphics are drawn from primitives with canvas glow, the
 music and every sound effect are synthesized live with the Web Audio API, and there are
-**no build tools, no frameworks and no dependencies** — just vanilla ES modules.
+**no build tools, no frameworks and no dependencies**, just vanilla ES modules.
 
 **RAWWWR OR DIE.**
 
@@ -49,7 +49,7 @@ to win.
 
 - **Six hand‑authored levels** of increasing difficulty (movement warm‑up → lava gauntlets →
   vertical towers), capped by a boss fight.
-- **Boss fight — "The Apex".** A giant neon pterodactyl that flies, repositions, jumps and
+- **Boss fight - "The Apex".** A giant neon pterodactyl that flies, repositions, jumps and
   slams the floor, and spits aimed fireballs. Chip down its health bar while dodging sweeping
   fireball hazards and shooter dinos that drop from the sky. Beat it for a triumphant ~5s
   victory jingle.
@@ -57,7 +57,7 @@ to win.
   buffering, asymmetric gravity with an apex hang, and squash‑&‑stretch.
 - **Procedural neon rendering** with additive bloom and a parallax jungle backdrop (moon,
   mist, canopy, ferns, fireflies, drifting spores, hanging vines).
-- **Fully synthesized audio** — SFX and looping background music generated in‑browser with
+- **Fully synthesized audio** - SFX and looping background music generated in‑browser with
   Web Audio; no audio files, no network.
 - **Adaptive quality manager** that watches real frame timing and steps quality up/down across
   four tiers (`min`/`low`/`med`/`high`) so the game stays smooth on weak hardware. Includes a
@@ -113,7 +113,7 @@ src/
 ## Performance
 
 The neon look leans entirely on canvas `shadowBlur` (glow), which is cheap on Chromium GPUs
-but very expensive on Firefox — and any non‑zero blur triggers Firefox's slow shadow path.
+but very expensive on Firefox - and any non‑zero blur triggers Firefox's slow shadow path.
 The adaptive quality manager (`src/core/quality.js`) handles this:
 
 - Four tiers control canvas DPR, a global glow multiplier, particle counts and background
@@ -137,7 +137,7 @@ achievement helpers (`__dbg.unlock(id)`, `__dbg.resetAchievements()`).
 ## Leaderboard (optional)
 
 The win screen shows a global "fastest time" leaderboard backed by
-[Supabase](https://supabase.com/)'s auto‑generated PostgREST API. It's optional — with no
+[Supabase](https://supabase.com/)'s auto‑generated PostgREST API. It's optional - with no
 backend configured, the game plays normally and simply shows "Leaderboard offline".
 
 To enable your own:
