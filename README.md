@@ -1,5 +1,8 @@
 # T‑REX // NEON RUN
 
+<img width="1909" height="958" alt="image" src="https://github.com/user-attachments/assets/93459b53-d2f0-415b-8b71-5d77d8dc5c99" />
+
+
 A neon, synthwave‑flavoured T‑Rex platformer that runs entirely in the browser. Sprint,
 jump and blast fireballs through six hand‑authored levels of glowing jungle — then face a
 giant wing‑flapping pterodactyl in the final boss arena.
